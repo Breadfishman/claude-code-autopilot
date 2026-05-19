@@ -7,6 +7,7 @@
        cron-list cron-runs \
        memory-search memory-status memory-reindex \
        crewai-workflow crewai-proxy-up crewai-proxy-down crewai-proxy-status \
+       crewai-serve crewai-serve-bg \
        engineering-loop engineering-loop-dry \
        ralph-once ralph-afk \
        set-timeout
@@ -83,8 +84,10 @@ help:
 	@echo "  make memory-reindex      - Reindex memory/RAG"
 	@echo ""
 	@echo "CrewAI (host-side):"
+	@echo "  make crewai-serve        - Start CrewAI HTTP API server (OpenClaw bridge, port 9317)"
+	@echo "  make crewai-serve-bg     - Start CrewAI HTTP API server in background"
 	@echo "  make crewai-workflow     - Run CrewAI engineering planner (usage: make crewai-workflow GOAL=\"...\")"
-	@echo "  make crewai-proxy-up     - Start CrewAI CLI proxy"
+	@echo "  make crewai-proxy-up     - Start CrewAI CLI proxy (CLIProxyAPI / Codex)"
 	@echo "  make crewai-proxy-down   - Stop CrewAI CLI proxy"
 	@echo "  make crewai-proxy-status - Show CrewAI CLI proxy status"
 	@echo ""
@@ -420,6 +423,35 @@ crewai-proxy-down:
 # Show CrewAI CLI proxy status
 crewai-proxy-status:
 	@bash .claude/scripts/crewai-cliproxyapi.sh status
+
+# Start the CrewAI HTTP API server on the host so OpenClaw (Docker) can call it.
+# The server listens on CREWAI_SERVER_PORT (default 9317). OpenClaw reaches it at
+# http://host.docker.internal:9317
+# Usage: make crewai-serve [WORKSPACE=/opt/repos/myrepo] [PORT=9317]
+CREWAI_DIR      ?= .crewai
+CREWAI_PKG      ?= $(shell cat $(CREWAI_DIR)/.package-name 2>/dev/null || echo engineering_crew)
+CREWAI_SERVER_PORT ?= 9317
+
+crewai-serve:
+	@echo "Starting CrewAI API server on port $(CREWAI_SERVER_PORT)..."
+	@echo "OpenClaw can call it at: http://host.docker.internal:$(CREWAI_SERVER_PORT)/run"
+	@cd $(CREWAI_DIR) && \
+	  CREWAI_WORKSPACE="$(or $(WORKSPACE),$(CURDIR))" \
+	  CREWAI_SERVER_PORT="$(CREWAI_SERVER_PORT)" \
+	  uv run python -m $(CREWAI_PKG).server --workspace "$(or $(WORKSPACE),$(CURDIR))"
+
+# Same but runs in the background (logs go to .claude/logs/crewai-server.log)
+crewai-serve-bg:
+	@mkdir -p .claude/logs
+	@echo "Starting CrewAI API server in background (port $(CREWAI_SERVER_PORT))..."
+	@cd $(CREWAI_DIR) && \
+	  CREWAI_WORKSPACE="$(or $(WORKSPACE),$(CURDIR))" \
+	  CREWAI_SERVER_PORT="$(CREWAI_SERVER_PORT)" \
+	  nohup uv run python -m $(CREWAI_PKG).server \
+	    --workspace "$(or $(WORKSPACE),$(CURDIR))" \
+	    >> "$(CURDIR)/.claude/logs/crewai-server.log" 2>&1 & \
+	  echo $$! > "$(CURDIR)/.claude/logs/crewai-server.pid" && \
+	  echo "PID $$! — tail -f .claude/logs/crewai-server.log"
 
 # ─── Engineering Loop (autonomous task driver) ──────────────────────
 

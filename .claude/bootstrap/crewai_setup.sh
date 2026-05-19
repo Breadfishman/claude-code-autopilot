@@ -105,6 +105,7 @@ TEMPLATE_MAP=(
   "src/package/crews/__init__.py.tmpl:src/${PY_PACKAGE}/crews/__init__.py"
   "src/package/crews/research.py.tmpl:src/${PY_PACKAGE}/crews/research.py"
   "src/package/crews/creative.py.tmpl:src/${PY_PACKAGE}/crews/creative.py"
+  "src/package/server.py.tmpl:src/${PY_PACKAGE}/server.py"
   "src/package/config/agents.yaml.tmpl:src/${PY_PACKAGE}/config/agents.yaml"
   "src/package/config/tasks.yaml.tmpl:src/${PY_PACKAGE}/config/tasks.yaml"
 )

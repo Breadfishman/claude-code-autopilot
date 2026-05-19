@@ -1,112 +1,122 @@
 # Full Setup Guide: OpenClaw + Multi-Crew AI Workforce
 
-> **This is the single entry-point guide.** Follow it top to bottom on a fresh dev machine. Subsections link to deeper references where needed.
+> **This is the single entry-point guide.** Follow it top to bottom on a fresh dev machine.
 
-## What You're Building
+## Architecture (How the Parts Connect)
 
 ```
 You (Discord)
      │
      ▼
-OpenClaw Gateway (Docker, port 18789)
-     │  Discord bot receives your message
+OpenClaw Gateway  ← Docker container
+     │  Claude Code agent receives your message,
+     │  executes tools inside the container,
+     │  can reach the host at host.docker.internal
      │
-     ├─ Simple / immediate task ──────────────────────────────────────────────────────┐
-     │    OpenClaw agent handles it inline (autopilot-workflow skill)                  │
-     │    Coding → claude-max-proxy (port 3456) → Claude Code (Max subscription)       │
-     │    Research/other → CrewAI crew (port 8317) → Codex (Codex subscription)        │
-     │    Result posted back to Discord                                                │
-     │                                                                                 │
-     └─ Queue / multi-task run ──────────────────────────────────────────────────────┐ │
-          Tasks written to bin/*.md (pending)                                         │ │
-          engineering-loop.sh processes them one by one:                              │ │
-            coding   → claude-max-proxy → Claude Code (tests, retry, commit)         │ │
-            research → CrewAI ResearchCrew (Codex) → bin/outputs/<slug>/result.md   │ │
-            creative → CrewAI CreativeCrew (Codex) → bin/outputs/<slug>/result.md   │ │
-            <custom> → your private crew in .crewai/crews/private/                   │ │
-                                                                                      ◄─┘
+     ├─ Coding task ─────────────────────────────────────────────────────────────┐
+     │    Agent calls claude-max-proxy directly                                    │
+     │    POST http://claude-max-proxy:3456/v1/chat/completions                   │
+     │    (same Docker network — no host needed)                                  │
+     │    Claude Code runs: edits files, runs tests, commits                      │
+     │    → result posted back to Discord                                          │
+     │                                                                             │
+     └─ Research / creative / custom task ───────────────────────────────────────┐ │
+          Agent calls the CrewAI HTTP bridge on the HOST                          │ │
+          POST http://host.docker.internal:9317/run                               │ │
+               │                                                                  │ │
+               ▼  (on the HOST machine)                                           │ │
+          CrewAI server  (.crewai/ — started with: make crewai-serve)            │ │
+               │  loads .crewai/.env, router.py, crews/                           │ │
+               │                                                                  │ │
+               ├── research  → ResearchCrew  ──┐                                 │ │
+               ├── creative  → CreativeCrew  ──┤→ POST http://127.0.0.1:8317/v1  │ │
+               ├── auto      → Codex classifies┘   CLIProxyAPI (Codex)           │ │
+               └── <custom>  → .crewai/crews/private/<name>.py                   │ │
+                                                                                  │ │
+          → result returned to OpenClaw → posted to Discord                      ◄─┘
 ```
 
-**Two subscription-backed engines, zero API costs:**
-| Engine | Port | Subscription | Used for |
-|--------|------|-------------|----------|
-| claude-max-proxy | 3456 | Claude Max | Coding execution only |
-| CLIProxyAPI | 8317 | OpenAI Codex / ChatGPT Plus | All thinking, planning, non-coding |
+**Three services, two subscriptions, zero API costs:**
+
+| Service | Where | Port | Subscription | Used for |
+|---------|-------|------|-------------|----------|
+| OpenClaw gateway | Docker | 18789 | Claude Max (via proxy) | Discord bot + agent |
+| claude-max-proxy | Docker | 3456 | Claude Max | Coding execution |
+| CLIProxyAPI | Docker | 8317 | Codex / ChatGPT Plus | All thinking + non-coding |
+| **CrewAI server** | **HOST** | **9317** | — | **Bridges OpenClaw → Codex crews** |
+
+The CrewAI server is the missing link. It runs on the HOST (where `uv` and Python are installed), listens on port 9317, and OpenClaw reaches it via `http://host.docker.internal:9317`.
 
 ---
 
 ## Part 1 — Prerequisites Check
 
-Before proceeding, verify all three services respond:
+Verify all services are alive:
 
 ```bash
-# 1. OpenClaw gateway
+# OpenClaw
 openclaw status
 
-# 2. claude-max-proxy (Claude Max coding engine)
-curl -s http://localhost:3456/health | python3 -m json.tool | head -5
-# Expected: "loggedIn": true
+# claude-max-proxy (coding engine)
+curl -s http://localhost:3456/health | python3 -c "import sys,json; d=json.load(sys.stdin); print('claude-max-proxy logged in:', d.get('auth',{}).get('loggedIn'))"
+# Expected: claude-max-proxy logged in: True
 
-# 3. CLIProxyAPI (Codex thinking engine)
-curl -s http://127.0.0.1:8317/v1/models | python3 -m json.tool | head -10
-# Expected: list of model entries including a Codex model
+# CLIProxyAPI (Codex thinking engine)
+curl -s http://127.0.0.1:8317/v1/models | python3 -m json.tool | head -8
+# Expected: list of model objects including a gpt-5.x-codex entry
 ```
 
-If any of these fail, fix them first:
+Fixes if any fail:
 - OpenClaw not responding → `make start` in `/opt/openclaw-home`
-- claude-max-proxy not authenticated → see `docs/openclaw.md` § Claude Max Proxy Setup
+- claude-max-proxy: see `docs/openclaw.md` § Claude Max Proxy Setup
 - CLIProxyAPI not running → `make crewai-proxy-up` in this repo
-- CLIProxyAPI logged out → see `docs/crewai.md` § CLIProxyAPI Setup
+- CLIProxyAPI logged out → `docker exec -it cliproxyapi-claude-code-autopilot ./CLIProxyAPI -config /app/config.yaml -codex-device-login`
 
 ---
 
-## Part 2 — Bootstrap the Multi-Crew Templates (One-time)
+## Part 2 — Bootstrap the Multi-Crew Files (One-time)
 
-The multi-crew files (router, domain crews, CodeExecutorTool, private crew loader) were
-added to the public templates but must be generated into your local `.crewai/`.
-The bootstrap is safe to re-run — it skips files that already exist.
+Your `.crewai/` was created with older templates. Re-run the bootstrap — it skips existing files and only creates missing ones:
 
 ```bash
 # From the repo root:
 bash .claude/bootstrap/crewai_setup.sh /opt/repos/claude-code-autopilot
+```
 
-# You should see [SKIP] for existing files and ==> Created for:
-#   src/<pkg>/router.py
-#   src/<pkg>/tools/__init__.py
-#   src/<pkg>/tools/code_executor.py
-#   src/<pkg>/crews/__init__.py
-#   src/<pkg>/crews/research.py
-#   src/<pkg>/crews/creative.py
-#   crews/private/README.md   (private crew instructions)
+You should see `[SKIP]` for existing files and `==> Created` for new ones:
+```
+==> Created src/<pkg>/router.py
+==> Created src/<pkg>/tools/__init__.py
+==> Created src/<pkg>/tools/code_executor.py
+==> Created src/<pkg>/crews/__init__.py
+==> Created src/<pkg>/crews/research.py
+==> Created src/<pkg>/crews/creative.py
+==> Created src/<pkg>/server.py
+    crews/private/README.md
+```
 
-# Sync dependencies (no new deps, but confirms the env is clean)
+Sync dependencies:
+```bash
 cd .crewai && uv sync && cd ..
 ```
 
-Verify the new files exist:
-
+Verify key files exist:
 ```bash
-ls .crewai/src/*/crews/
-ls .crewai/src/*/tools/
-ls .crewai/crews/private/
+ls .crewai/src/*/router.py .crewai/src/*/server.py .crewai/src/*/crews/ .crewai/crews/private/
 ```
 
 ---
 
-## Part 3 — Wire Up the `.crewai/.env`
+## Part 3 — Configure `.crewai/.env`
 
-Your `.crewai/.env` needs entries for BOTH engines:
-
+Edit `.crewai/.env` to have entries for both engines. If starting fresh:
 ```bash
-cd .crewai
-# If you haven't already:
-cp .env.example .env
+cp .crewai/.env.example .crewai/.env
 ```
 
-Minimum required content in `.crewai/.env`:
-
+Minimum required:
 ```dotenv
-# Codex engine (CLIProxyAPI) — thinking, planning, non-coding tasks
+# Codex (CLIProxyAPI) — all thinking and non-coding tasks
 CREWAI_LLM_MODE=proxy
 OPENAI_BASE_URL=http://127.0.0.1:8317/v1
 OPENAI_API_BASE=http://127.0.0.1:8317/v1
@@ -115,181 +125,189 @@ CLI_PROXY_API_KEY=<key from .crewai/cliproxyapi/config.yaml>
 OPENAI_API_KEY=<same key>
 ENGINEERING_MODEL=gpt-5.3-codex
 
-# Claude Max engine (claude-max-proxy) — coding execution only
+# claude-max-proxy — coding execution only
 CLAUDE_MAX_PROXY_URL=http://localhost:3456
-ENGINEERING_CODE_MODEL=claude-sonnet-4-6
+ENGINEERING_CODE_MODEL=claude-opus-4-7
 ```
 
-Get your proxy key:
-
+Get your Codex proxy key:
 ```bash
 grep -A5 'api-keys' .crewai/cliproxyapi/config.yaml
 ```
 
-Smoke test the full chain:
-
+Smoke test:
 ```bash
 cd .crewai
-uv run python -m "$(cat .package-name)".main --type research --task "What is 2+2" --dry-run
-# Should print: Dry run — inputs for router.dispatch(type='research')
+uv run python -m "$(cat .package-name)".main --type research --task "test" --dry-run
+# Expected: Dry run — inputs for router.dispatch(type='research')
 ```
 
 ---
 
-## Part 4 — Discord as the Interface
+## Part 4 — Start the CrewAI HTTP Bridge
 
-### How it already works
+This is the piece that connects OpenClaw (Docker) to your Codex crews (host).
 
-OpenClaw's agent in your Discord channel handles tasks inline. When you send a message
-to a channel bound to this repo, the agent:
-1. Receives your message
-2. Uses `autopilot-workflow` skill to plan and execute
-3. For coding: calls claude-max-proxy directly (no API cost)
-4. Reports completion back to Discord
+```bash
+# Start in the foreground (Ctrl+C to stop):
+make crewai-serve WORKSPACE=/opt/repos/claude-code-autopilot
 
-**Nothing extra is needed for immediate single tasks.** Just send:
+# Or start in the background:
+make crewai-serve-bg WORKSPACE=/opt/repos/claude-code-autopilot
+# Logs: tail -f .claude/logs/crewai-server.log
+```
+
+Verify it's reachable from the HOST:
+```bash
+curl -s http://localhost:9317/health
+# → {"status": "ok", "server": "crewai-api"}
+
+curl -s http://localhost:9317/crews
+# → {"crews": ["creative", "research"]}  (+ any private crews)
+```
+
+Keep this running whenever you use non-coding tasks from Discord.
+
+**Auto-start on boot** (optional):
+```bash
+# Add to crontab: @reboot starts it after each machine restart
+crontab -e
+# Add this line:
+# @reboot cd /opt/repos/claude-code-autopilot && make crewai-serve-bg WORKSPACE=/opt/repos/claude-code-autopilot
+```
+
+---
+
+## Part 5 — Discord as the Interface
+
+### For coding tasks (already works)
+
+Just tell OpenClaw what to do. The agent uses Claude Code tools directly and calls `claude-max-proxy` in the same Docker network:
 
 ```
 Add JWT authentication to the /opt/repos/myrepo API
 ```
 
-The agent handles it end-to-end and reports back.
+The agent handles it end-to-end (plans, edits code, runs tests, commits) and reports back.
 
-### Routing non-coding tasks from Discord
+### For research / creative / non-coding tasks
 
-For research, creative writing, game design, chemistry, etc., ask the agent to use
-the CrewAI crew. The agent can call it inline:
+The agent calls the CrewAI HTTP bridge you started in Part 4:
 
 ```
 Research the best database for a real-time multiplayer game — give me a comparison table
 ```
 
-Or explicitly route it:
-
 ```
-Use the research crew to compare PostgreSQL vs MongoDB vs Redis for real-time leaderboards
+Use the research crew to compare event sourcing vs traditional CRUD for an audit log system
 ```
 
-The agent will call:
+Internally, the agent runs:
 ```bash
-cd /opt/repos/claude-code-autopilot/.crewai && \
-  uv run python -m <pkg>.main --type research --task "..."
+curl -s --max-time 600 \
+  -X POST http://host.docker.internal:9317/run \
+  -H "Content-Type: application/json" \
+  -d '{"type": "research", "task": "Compare event sourcing vs CRUD for audit logs"}'
 ```
 
-And post the result back to Discord.
+The CrewAI server dispatches to the ResearchCrew (Codex), returns the result, and the agent posts it to Discord.
 
-### Setting up the Discord channel → repo binding (if not done yet)
+**If you want the agent to route automatically** without you specifying the type, say:
+```
+[auto] Compare event sourcing vs CRUD for audit logs in a financial system
+```
+The `auto` type tells the router to ask Codex to classify the task and dispatch accordingly.
+
+### Bind a Discord channel to this repo (if not already done)
 
 ```bash
-# 1. Register this repo as an OpenClaw agent (if not already)
+# Register this repo as an OpenClaw agent
 make add-agent AGENT=autopilot REPO=/opt/repos/claude-code-autopilot
 
-# 2. Configure Discord (bot token, guild, channel)
+# Configure Discord bot
 bash .claude/bootstrap/openclaw_discord_setup.sh
 
-# 3. Bind the channel to this repo agent with concurrency settings
+# Bind channel → agent, set concurrency
 bash .claude/bootstrap/openclaw_discord_scale_setup.sh
 ```
 
 In Discord:
 ```
-/new          ← start a fresh session on this repo agent
-/status       ← confirm: Session: agent:autopilot:discord:channel:<id>
+/new      ← start a fresh session on this repo agent
+/status   ← confirm: Session: agent:autopilot:discord:channel:<id>
 ```
 
 ---
 
-## Part 5 — Batch Task Queue (Engineering Loop)
+## Part 6 — Batch Task Queue (Engineering Loop)
 
-For running multiple tasks hands-free (while you're away from the computer):
+For running many tasks unattended while you're away:
 
-### Step 1 — Create a task file
+### Create task files in `bin/`
 
-```bash
-cat > /opt/repos/claude-code-autopilot/bin/my-tasks.md << 'EOF'
-# Tasks
+```markdown
+# bin/my-tasks.md
 
-## Task: add-error-handling
+## Task: add-rate-limiting
 **Status:** pending
 **Type:** coding
-**Branch:** feat/add-error-handling
+**Branch:** feat/add-rate-limiting
 
-Add proper error handling to the API. All endpoints should return structured
-JSON errors with a `code` field and `message` field. HTTP 400 for validation
-errors, 500 for internal errors. Add tests.
+Add 100 req/min rate limiting per IP. Return 429 with Retry-After header.
+Allowlist /health. Add tests.
 
 ---
 
-## Task: research-caching-strategy
+## Task: research-auth-patterns
 **Status:** pending
 **Type:** research
 
-Research Redis vs Memcached vs in-process caching for a high-read API. Include:
-latency benchmarks, cost comparison, operational complexity, and a recommendation
-for a team of 3 engineers.
+Compare JWT vs session tokens vs API keys for a B2B SaaS product. Include
+security trade-offs, operational complexity, and a recommendation.
 
 ---
-EOF
 ```
 
-### Step 2 — Dry-run to verify parsing
+### Run from terminal
 
 ```bash
+# Dry-run first to verify parsing
 bash .claude/scripts/engineering-loop.sh --dry-run bin/my-tasks.md
-```
 
-Expected output shows both tasks with correct types and slugs.
-
-### Step 3 — Run
-
-```bash
-# From terminal (direct)
+# Execute all pending tasks
 bash .claude/scripts/engineering-loop.sh bin/my-tasks.md
-
-# With CrewAI-generated PRD for coding tasks
-bash .claude/scripts/engineering-loop.sh --use-planner bin/my-tasks.md
 
 # All *.md files in bin/ at once
 bash .claude/scripts/engineering-loop.sh bin/
+
+# With Codex-generated PRD for each coding task
+bash .claude/scripts/engineering-loop.sh --use-planner bin/
 ```
 
-### Step 4 — Check results
-
-- **Coding tasks:** committed to the branch specified in `**Branch:**`
-- **Non-coding tasks:** output written to `bin/outputs/<slug>/result.md`
-- **Log:** `.claude/logs/engineering-loop.log`
-
-### Running the loop from Discord (on-demand)
-
-In your Discord channel, ask the OpenClaw agent:
+### Run from Discord (tell the agent)
 
 ```
 Run the engineering loop on bin/ in /opt/repos/claude-code-autopilot
 ```
 
-Or set up an OpenClaw cron to run it automatically:
+The agent runs `bash .claude/scripts/engineering-loop.sh /opt/repos/claude-code-autopilot/bin/` and posts the summary when done.
 
-```bash
-# Add a host-side cron that runs every 30 minutes
-# (OpenClaw cron runs inside Docker; for host-side scripts use system crontab)
-crontab -e
-# Add:
-# */30 * * * * bash /opt/repos/claude-code-autopilot/.claude/scripts/engineering-loop.sh /opt/repos/claude-code-autopilot/bin >> /opt/repos/claude-code-autopilot/.claude/logs/cron-loop.log 2>&1
-```
+### Results
+
+- **Coding tasks** → committed to the branch in `**Branch:**`
+- **Non-coding tasks** → `bin/outputs/<slug>/result.md`
+- **Log** → `.claude/logs/engineering-loop.log`
 
 ---
 
-## Part 6 — Adding Private Crews
+## Part 7 — Private Crews (Yours, Never Committed)
 
-Your private crews live in `.crewai/crews/private/` — this directory is
-gitignored. **Nothing you put here is ever committed.**
-
-### Create a private crew
+`.crewai/crews/private/` is gitignored. Put your crew `.py` files there.
 
 ```python
 # .crewai/crews/private/game_design.py
 
-CREW_NAME = "game-design"   # the routing key
+CREW_NAME = "game-design"
 
 def run(task_description: str, **kwargs) -> str:
     import os
@@ -300,100 +318,85 @@ def run(task_description: str, **kwargs) -> str:
         base_url=os.getenv("OPENAI_BASE_URL", "http://127.0.0.1:8317/v1"),
         api_key=os.getenv("OPENAI_API_KEY", ""),
     )
-
-    designer = Agent(
+    agent = Agent(
         role="Game Designer",
-        goal="Design engaging, balanced, and fun game mechanics and systems.",
-        backstory=(
-            "You are a veteran game designer with expertise in game loops, "
-            "economy design, player psychology, and mechanics balance."
-        ),
+        goal="Design engaging, balanced game mechanics and systems.",
+        backstory="Senior game designer expert in game loops, economy, and player psychology.",
         llm=llm,
         verbose=True,
     )
     task = Task(
         description=task_description,
-        agent=designer,
-        expected_output=(
-            "A detailed game design document with mechanics, progression systems, "
-            "and implementation notes."
-        ),
+        agent=agent,
+        expected_output="A detailed game design document with mechanics and implementation notes.",
     )
-    crew = Crew(agents=[designer], tasks=[task], process=Process.sequential)
-    return str(crew.kickoff())
+    return str(Crew(agents=[agent], tasks=[task], process=Process.sequential).kickoff())
 ```
 
-### Use it in a task file
+Use it from Discord:
+```
+Design a crafting system for a survival roguelike using the game-design crew
+```
 
+Or in a task file:
 ```markdown
 ## Task: design-combat-system
 **Status:** pending
 **Type:** game-design
 
-Design a turn-based combat system for a roguelike game. Include:
-- Action economy (AP system vs cooldowns)
-- Status effect framework
-- Enemy AI archetypes
-- Balancing levers for difficulty scaling
+Design a turn-based combat system...
 ```
 
-### Use it from Discord
+The crew loader auto-discovers any `.py` in `crews/private/` with a `run()` function. No registration needed. See `.crewai/crews/private/README.md` for the full interface.
 
+Restart the CrewAI server after adding a new private crew so it reloads:
+```bash
+make crewai-serve-bg WORKSPACE=/opt/repos/claude-code-autopilot
 ```
-Design a crafting system for my roguelike game using the game-design crew
-```
-
-The loader auto-discovers any `.py` file in `.crewai/crews/private/` that
-has a `run()` function. No registration needed.
 
 ---
 
-## Part 7 — Reference: Task Type Routing
+## Part 8 — Task Type Reference
 
-| `**Type:**` value | Engine | Behaviour |
-|-------------------|--------|-----------|
-| `coding` (default) | claude-max-proxy → Claude Code | Branch checkout, tests run, retried on failure, committed |
-| `research` | CLIProxyAPI → ResearchCrew (Codex) | Output → `bin/outputs/<slug>/result.md` |
-| `creative` | CLIProxyAPI → CreativeCrew (Codex) | Output → `bin/outputs/<slug>/result.md` |
-| `auto` | Codex classifies → dispatches | Whichever crew Codex thinks fits |
-| `<custom>` | CLIProxyAPI → private crew matching `CREW_NAME` | Output → `bin/outputs/<slug>/result.md` |
+| `**Type:**` | Engine | Behaviour |
+|-------------|--------|-----------|
+| `coding` (default) | claude-max-proxy → Claude Code | Branch, test/retry, commit |
+| `research` | CLIProxyAPI → ResearchCrew | → `bin/outputs/<slug>/result.md` |
+| `creative` | CLIProxyAPI → CreativeCrew | → `bin/outputs/<slug>/result.md` |
+| `auto` | Codex classifies → dispatches | → `bin/outputs/<slug>/result.md` |
+| `<custom>` | CLIProxyAPI → private crew | → `bin/outputs/<slug>/result.md` |
 
 ---
 
-## Part 8 — Troubleshooting
+## Quick-Reference Checklist (Daily Startup)
+
+```bash
+# 1. Verify both proxies
+curl -s http://localhost:3456/health | python3 -c "import sys,json; print(json.load(sys.stdin).get('auth',{}).get('loggedIn'))"
+curl -s http://127.0.0.1:8317/v1/models | python3 -m json.tool | head -5
+
+# 2. Start the CrewAI bridge (if not auto-started)
+make crewai-serve-bg WORKSPACE=/opt/repos/claude-code-autopilot
+curl -s http://localhost:9317/health   # confirm it's up
+
+# 3. In Discord: /status  ← confirm agent session is live
+```
+
+---
+
+## Troubleshooting
 
 | Symptom | Fix |
 |---------|-----|
 | `No module named <pkg>.router` | Re-run bootstrap: `bash .claude/bootstrap/crewai_setup.sh` |
-| `uv: command not found` in loop | Install uv on host: `curl -LsSf https://astral.sh/uv/install.sh \| sh` |
-| Engineering loop: `planner: .crewai not found` | Drop `--use-planner` or run bootstrap first |
-| Crew task fails silently | Check `.claude/logs/engineering-loop.log` |
-| CLIProxyAPI returns 401 | Re-run Codex device login: `docker exec -it cliproxyapi-<slug> ./CLIProxyAPI -config /app/config.yaml -codex-device-login` |
-| claude-max-proxy returns 401 | Re-run `docker exec -it claude-max-proxy claude setup-token` in `/opt/openclaw-home` |
-| Discord not responding | `openclaw channels status` → `make restart` in `/opt/openclaw-home` |
-| Wrong agent in Discord | `bash .claude/bootstrap/openclaw_discord_scale_setup.sh` to rebind channel |
-
----
-
-## Quick-Reference: Daily Commands
-
-```bash
-# Check everything is alive
-openclaw status
-curl -s http://localhost:3456/health | python3 -c "import sys,json; d=json.load(sys.stdin); print('claude-max-proxy:', d.get('auth', {}).get('loggedIn'))"
-
-# Add a task and run immediately
-echo "..." >> bin/tasks.md   # edit the file to add a pending task
-bash .claude/scripts/engineering-loop.sh --dry-run bin/tasks.md   # verify
-bash .claude/scripts/engineering-loop.sh bin/tasks.md             # run
-
-# Tail the loop log
-tail -f .claude/logs/engineering-loop.log
-
-# Restart all Docker services if needed
-make stop && make start   # in /opt/openclaw-home
-make crewai-proxy-up      # in this repo (if Codex proxy stopped)
-```
+| `Connection refused` on port 9317 | Start the bridge: `make crewai-serve-bg WORKSPACE=...` |
+| OpenClaw can't reach port 9317 | Confirm `extra_hosts: host.docker.internal:host-gateway` is in `docker-compose.openclaw.yml` (it is by default) |
+| Crew task times out | Increase `--max-time` on curl; default is 600s (10 min) |
+| Wrong crew dispatched | Check `CREW_NAME` in your private crew file; use explicit `--type` instead of `auto` |
+| CLIProxyAPI 401 | Re-run device login: `docker exec -it cliproxyapi-claude-code-autopilot ./CLIProxyAPI -config /app/config.yaml -codex-device-login` |
+| claude-max-proxy 401 | `docker exec -it claude-max-proxy claude setup-token` in `/opt/openclaw-home` |
+| `uv: command not found` | Install: `curl -LsSf https://astral.sh/uv/install.sh \| sh` then re-open shell |
+| New private crew not loading | Restart the CrewAI server: `make crewai-serve-bg` |
 
 ---
 
@@ -407,4 +410,3 @@ make crewai-proxy-up      # in this repo (if Codex proxy stopped)
 | Private crews interface | `.crewai/crews/private/README.md` |
 | Docker stack details | `docs/docker-openclaw-crewai.md` |
 | Discord remote commands | `.claude/docs/openclaw-remote-commands.md` |
-| Adding private crews | `docs/crewai.md` § Adding Private Crews |
