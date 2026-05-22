@@ -237,6 +237,30 @@ In Discord:
 /status   ← confirm: Session: agent:autopilot:discord:channel:<id>
 ```
 
+### Universal workspace anchoring (prevents agents from losing their repo)
+
+After long sessions, OpenClaw compacts the conversation and agents can lose
+track of their workspace (e.g. end up in `/app` instead of `/opt/repos/Kairo`).
+Enable the workspace-anchor hooks so this can't happen, regardless of how many
+repos or agents you add later:
+
+```bash
+make setup-workspace-anchors
+```
+
+This enables two OpenClaw hooks:
+- `session-memory` — preserves context across `/new` and `/reset`
+- `bootstrap-extra-files` — re-injects `AGENTS.md` and `.claude/CLAUDE.md` from
+  the workspace at every session start
+
+**This is a one-time setup.** It's also called automatically by
+`bash .claude/bootstrap/openclaw_setup.sh` for new installs, so this step is
+only needed on existing installs that pre-date the hook configuration.
+
+For each new repo you add later, drop a minimal `AGENTS.md` at the repo root
+(`# RepoName — Workspace: /opt/repos/<repo>`). The hook auto-injects it for
+that repo's agent — no per-agent config required.
+
 ---
 
 ## Part 6 — Batch Task Queue (Engineering Loop)

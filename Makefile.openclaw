@@ -1,7 +1,7 @@
 .PHONY: help update build rebuild rebuild-proxy start start-host stop restart restart-host logs logs-viewer status shell clean \
        add-origins verify-vnc config-get approve-device \
        auth-anthropic auth-openai auth-gh auth-claude-proxy models dashboard-url config-set doctor \
-       add-agent update-agent setup-discord setup-discord-scale \
+       add-agent update-agent setup-discord setup-discord-scale setup-workspace-anchors \
        viewer-url models-status channels-status \
        hooks-list hooks-enable \
        cron-list cron-runs \
@@ -64,6 +64,7 @@ help:
 	@echo "                             Usage: make update-agent AGENT=name REPO=/path/to/repo"
 	@echo "  make setup-discord       - Set up Discord bot channel (interactive)"
 	@echo "  make setup-discord-scale - Set up Discord scaling/lanes (interactive)"
+	@echo "  make setup-workspace-anchors - Enable hooks that re-anchor agents to workspace after compaction"
 	@echo ""
 	@echo "OpenClaw Status & Info:"
 	@echo "  make viewer-url          - Print browser viewer URL"
@@ -344,6 +345,12 @@ setup-discord:
 # Set up Discord scaling/lanes (interactive)
 setup-discord-scale:
 	bash $(BOOTSTRAP_DIR)/openclaw_discord_scale_setup.sh
+
+# Configure workspace anchor hooks (session-memory + bootstrap-extra-files).
+# Run this on existing installs to enable automatic workspace recovery.
+# Idempotent — safe to re-run.
+setup-workspace-anchors:
+	bash $(BOOTSTRAP_DIR)/openclaw_hooks_setup.sh
 
 # ─── OpenClaw Status & Info ──────────────────────────────────────────
 

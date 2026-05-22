@@ -251,6 +251,20 @@ GATEWAY_PORT=""
 if [[ "$START_STACK" == "true" ]]; then
   VIEWER_PORT="$("${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" "${compose_args[@]}" port openclaw-browser-viewer 6080 2>/dev/null | sed -n 's/.*://p' | head -n1 || true)"
   GATEWAY_PORT="$("${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" "${compose_args[@]}" port openclaw-gateway 18789 2>/dev/null | sed -n 's/.*://p' | head -n1 || true)"
+
+  # Configure workspace anchor hooks (session-memory + bootstrap-extra-files).
+  # These prevent agents from losing track of their workspace after context
+  # compaction. Idempotent — safe to re-run on every install/update.
+  HOOKS_SCRIPT="$SCRIPT_DIR/openclaw_hooks_setup.sh"
+  if [[ -f "$HOOKS_SCRIPT" ]]; then
+    log "Configuring workspace anchor hooks..."
+    # Give the gateway a moment to come up before the CLI talks to it
+    for _i in 1 2 3 4 5 6 7 8 9 10; do
+      if openclaw status >/dev/null 2>&1; then break; fi
+      sleep 2
+    done
+    bash "$HOOKS_SCRIPT" || warn "Hook configuration failed — run manually: bash $HOOKS_SCRIPT"
+  fi
 fi
 
 cat <<EOF_SUMMARY
