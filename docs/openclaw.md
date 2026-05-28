@@ -117,18 +117,26 @@ After the proxy is authenticated, it is reachable from the OpenClaw gateway at `
       "apiKey": "ignored",
       "models": [
         {
-          "id": "claude-sonnet-4-6",
-          "name": "Claude Sonnet 4.6 (Max Proxy)"
+          "id": "claude-sonnet",
+          "name": "Claude Sonnet (latest, Max Proxy)"
         },
         {
-          "id": "claude-opus-4-7",
-          "name": "Claude Opus 4.7 (Max Proxy)"
+          "id": "claude-opus",
+          "name": "Claude Opus (latest, Max Proxy)"
         }
       ]
     }
   }
 },
 ```
+
+These are **version-less, always-latest aliases**. The proxy resolves any
+`claude-opus*` / `claude-sonnet*` / `claude-haiku*` id to that family and runs
+the Claude CLI with `--model opus|sonnet|haiku`, which the CLI always points at
+the newest release. So `claude-opus` follows every new Opus automatically — no
+config change per release. If you'd rather pin a fixed model (e.g. to hold
+Sonnet at a known version), use a dated id such as `claude-sonnet-4-6`
+instead; it resolves the same way but stays on that version.
 
 **2. Add the model allowlist.** Inside `agents.defaults`, add a `models` object that registers each model with a short alias. OpenClaw only exposes models listed here:
 
@@ -143,8 +151,8 @@ After the proxy is authenticated, it is reachable from the OpenClaw gateway at `
     "maxConcurrent": 8,
     "subagents": { "runTimeoutSeconds": 3600 },
     "models": {
-      "claude-max-proxy/claude-sonnet-4-6": { "alias": "sonnet" },
-      "claude-max-proxy/claude-opus-4-7": { "alias": "opus" }
+      "claude-max-proxy/claude-sonnet": { "alias": "sonnet" },
+      "claude-max-proxy/claude-opus": { "alias": "opus" }
     }
   }
 }
@@ -153,8 +161,8 @@ After the proxy is authenticated, it is reachable from the OpenClaw gateway at `
 **3. Set the primary model and fallbacks.** Edit `/opt/openclaw-home/.env`:
 
 ```
-OPENCLAW_MODEL_PRIMARY=claude-max-proxy/claude-opus-4-7
-OPENCLAW_MODEL_FALLBACKS=["claude-max-proxy/claude-sonnet-4-6"]
+OPENCLAW_MODEL_PRIMARY=claude-max-proxy/claude-opus
+OPENCLAW_MODEL_FALLBACKS=["claude-max-proxy/claude-sonnet"]
 ```
 
 Restart the gateway:
@@ -169,7 +177,7 @@ Verify both models are registered:
 openclaw models list
 ```
 
-You should see both `claude-max-proxy/claude-sonnet-4-6` and `claude-max-proxy/claude-opus-4-7`. Switch between them in Discord with `/model`, or from the CLI with the alias (`/model opus`, `/model sonnet`).
+You should see both `claude-max-proxy/claude-sonnet` and `claude-max-proxy/claude-opus`. Switch between them in Discord with `/model`, or from the CLI with the alias (`/model opus`, `/model sonnet`).
 
 Verify the proxy container is running:
 

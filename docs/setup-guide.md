@@ -127,7 +127,7 @@ ENGINEERING_MODEL=gpt-5.3-codex
 
 # claude-max-proxy — coding execution only
 CLAUDE_MAX_PROXY_URL=http://localhost:3456
-ENGINEERING_CODE_MODEL=claude-opus-4-7
+ENGINEERING_CODE_MODEL=claude-opus
 ```
 
 Get your Codex proxy key:
