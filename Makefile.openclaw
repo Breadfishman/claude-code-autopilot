@@ -10,7 +10,7 @@
        crewai-serve crewai-serve-bg \
        engineering-loop engineering-loop-dry \
        ralph-once ralph-afk \
-       set-timeout
+       set-timeout set-inbound-timeout
 
 SHELL := /bin/bash
 -include .env
@@ -102,6 +102,7 @@ help:
 	@echo ""
 	@echo "Agent Timeout:"
 	@echo "  make set-timeout         - Set agent run timeout (usage: make set-timeout TIMEOUT=7200)"
+	@echo "  make set-inbound-timeout - Set Discord inbound-worker timeout ms (usage: make set-inbound-timeout TIMEOUT_MS=7200000)"
 	@echo ""
 	@echo "Claude Max Proxy:"
 	@echo "  make think LEVEL=high    - Set thinking budget for claude-max-proxy"
@@ -500,6 +501,16 @@ set-timeout:
 	@TIMEOUT=$${TIMEOUT:-7200}; \
 	$(EXEC_T) openclaw config set agents.defaults.timeoutSeconds $$TIMEOUT; \
 	echo "Agent timeout set to $${TIMEOUT}s"
+
+# Set the Discord inbound-worker run timeout (ms). OpenClaw's default is a
+# hard-coded 30-min wall-clock cap per inbound message that SIGTERMs long runs
+# regardless of agents.defaults.timeoutSeconds. Default here is 2h to match.
+# Usage: make set-inbound-timeout TIMEOUT_MS=7200000
+set-inbound-timeout:
+	@TIMEOUT_MS=$${TIMEOUT_MS:-7200000}; \
+	$(EXEC_T) openclaw config set channels.discord.inboundWorker.runTimeoutMs $$TIMEOUT_MS; \
+	echo "Discord inbound worker timeout set to $${TIMEOUT_MS}ms"; \
+	echo "Restart to apply: make restart"
 
 # ─── Claude Max Proxy Thinking Budget ────────────────────────────────
 

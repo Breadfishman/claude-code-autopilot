@@ -179,6 +179,54 @@ os.replace(tmp, cfg_path)
 PY
 }
 
+# Raise the Discord inbound-worker run timeout. OpenClaw caps total wall-clock
+# per inbound message at a hard-coded 30 min default and SIGTERMs the run when
+# it trips (reason=client_disconnected) — independent of, and unaffected by,
+# agents.defaults.timeoutSeconds. Default here is 2h so the agent's own
+# graceful timeout is the limiter, not the channel's hard kill.
+upsert_discord_inbound_timeout() {
+  local timeout_ms="${1:-7200000}"
+  local config_file
+  config_file="$(cfg_path)"
+
+  if ! has python3; then
+    warn "python3 not found; cannot set Discord inbound worker timeout."
+    return 1
+  fi
+
+  if [[ ! -f "$config_file" ]]; then
+    warn "Config not found at ${config_file}; cannot set Discord inbound worker timeout."
+    return 1
+  fi
+
+  python3 - "$config_file" "$timeout_ms" <<'PY'
+import json, os, sys
+from datetime import datetime, timezone
+
+cfg_path, timeout_ms = sys.argv[1], int(sys.argv[2])
+
+with open(cfg_path, "r", encoding="utf-8") as f:
+    data = json.load(f)
+
+meta = data.setdefault("meta", {})
+meta["lastTouchedAt"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+channels = data.setdefault("channels", {})
+discord = channels.setdefault("discord", {})
+inbound = discord.get("inboundWorker")
+if not isinstance(inbound, dict):
+    inbound = {}
+inbound["runTimeoutMs"] = timeout_ms
+discord["inboundWorker"] = inbound
+
+tmp = cfg_path + ".tmp"
+with open(tmp, "w", encoding="utf-8") as f:
+    json.dump(data, f, indent=2)
+    f.write("\n")
+os.replace(tmp, cfg_path)
+PY
+}
+
 if ! has openclaw; then
   warn "OpenClaw is not installed. Run install.sh --with-openclaw first."
   exit 1
@@ -254,19 +302,13 @@ openclaw plugins enable discord 2>/dev/null || true
 
 # Add Discord channel to OpenClaw
 # Try current CLI syntax first, then fall back to config-based setup
+TOKEN_CONFIGURED=0
 if openclaw channels add --channel discord --token "$BOT_TOKEN" 2>&1; then
   log "Discord channel configured successfully!"
-
-  # Restart gateway to pick up new channel
-  restart_openclaw_gateway
-  log "Gateway restarted to connect Discord bot."
-  sleep 3
+  TOKEN_CONFIGURED=1
 elif openclaw config set channels.discord.token "$BOT_TOKEN" 2>&1; then
   log "Discord token set via config."
-
-  restart_openclaw_gateway
-  log "Gateway restarted to connect Discord bot."
-  sleep 3
+  TOKEN_CONFIGURED=1
 else
   warn "Failed to configure Discord channel."
   echo "  Try manually inside the container (make shell):"
@@ -275,6 +317,21 @@ else
   echo "       OR: openclaw config set channels.discord.token <your-token>"
   echo "    3. Restart: exit && make restart"
   exit 1
+fi
+
+if [[ "$TOKEN_CONFIGURED" == "1" ]]; then
+  # Lift the 30-min inbound-worker cap before restarting so the same restart
+  # applies both the token and the timeout. Override with env if desired.
+  if upsert_discord_inbound_timeout "${OPENCLAW_DISCORD_INBOUND_TIMEOUT_MS:-7200000}"; then
+    log "Set channels.discord.inboundWorker.runTimeoutMs (2h) in $(cfg_path)"
+  else
+    warn "Could not set Discord inbound worker timeout; apply it later with 'make set-inbound-timeout' (see docs/troubleshooting.md)."
+  fi
+
+  # Restart gateway to pick up new channel + timeout
+  restart_openclaw_gateway
+  log "Gateway restarted to connect Discord bot."
+  sleep 3
 fi
 
 # Step 5: Test connection

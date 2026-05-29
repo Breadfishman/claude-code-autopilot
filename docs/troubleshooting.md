@@ -50,6 +50,61 @@ openclaw config get agents.defaults.timeoutSeconds
 # Should output: 7200
 ```
 
+## Discord Task Killed at ~30 Minutes ("Discord inbound worker timed out")
+
+**Symptom:** A long task launched from Discord dies after roughly 30 minutes, even
+though `agents.defaults.timeoutSeconds` is already 7200 (2h). The Discord reply
+says **"Discord inbound worker timed out."**
+
+**Log signature** (in `make logs` / proxy logs):
+```
+event=subprocess.kill reason=client_disconnected
+event=subprocess.kill signal=SIGTERM
+event=subprocess.close code=143
+```
+
+**Cause:** OpenClaw's Discord **inbound worker** has its own hard-coded ~30-minute
+total wall-clock cap per inbound message. This is **separate from**
+`agents.defaults.timeoutSeconds` — which is why raising the agent timeout never
+helped. When the inbound cap trips, OpenClaw drops the connection to
+`claude-max-proxy`; the proxy then SIGTERMs the in-flight Claude CLI on client
+disconnect (`code=143` = 128 + SIGTERM). The gap between the start and the kill
+in the log is exactly ~30 min.
+
+**Fix:** raise `channels.discord.inboundWorker.runTimeoutMs` (milliseconds). 2h
+matches the agent timeout so the agent's own graceful timeout becomes the limiter
+instead of the channel's hard kill. `make setup-discord` now sets this
+automatically; for existing installs:
+
+```bash
+# Set to 2 hours (7200000 ms)
+make set-inbound-timeout TIMEOUT_MS=7200000
+make restart
+
+# Or directly inside the container
+make shell
+openclaw config set channels.discord.inboundWorker.runTimeoutMs 7200000
+```
+
+`openclaw.json` ends up with:
+```jsonc
+"channels": {
+  "discord": {
+    "inboundWorker": { "runTimeoutMs": 7200000 }
+  }
+}
+```
+
+Prefer a generous bound (e.g. 7200000) over disabling the cap entirely, so a
+genuinely hung request can still be reclaimed.
+
+**Verify:**
+```bash
+make shell
+openclaw config get channels.discord.inboundWorker.runTimeoutMs
+# Should output: 7200000
+```
+
 ## Can't Access Host localhost From Container
 
 **Symptom:** An agent inside the Docker container can't reach a dev server running on the host at `127.0.0.1:<port>`. `curl http://127.0.0.1:4000` fails with "Connection refused".

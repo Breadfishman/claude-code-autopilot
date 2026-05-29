@@ -28,7 +28,7 @@ The Docker/OpenClaw install defaults to `/opt/openclaw-home` when `--dest` is om
 4. Authenticate Anthropic subscription inside the container: `make auth-anthropic`
 5. Authenticate OpenAI subscription inside the container when needed: `make auth-openai`
 6. Open the browser viewer: `make viewer-url`
-7. Run Discord setup if needed: `make setup-discord`
+7. Run Discord setup if needed: `make setup-discord` (also lifts the 30-min Discord inbound-worker cap to 2h so long tasks aren't killed mid-run — see [troubleshooting](troubleshooting.md#discord-task-killed-at-30-minutes-discord-inbound-worker-timed-out))
 8. Register extra repos under `/opt/repos` if needed: `make add-agent AGENT=<agent-id> REPO=/opt/repos/<repo-name>`
 
 Important:
