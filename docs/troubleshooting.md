@@ -105,6 +105,29 @@ openclaw config get channels.discord.inboundWorker.runTimeoutMs
 # Should output: 7200000
 ```
 
+## Discord Plugin Not Installed ("plugin not installed: discord")
+
+**Symptom:** On startup or in `make logs` you see:
+```
+plugins.entries.discord: plugin not installed: discord — install the official
+external plugin with: openclaw plugins install @openclaw/discord
+```
+
+**Cause:** Discord support ships as an external OpenClaw plugin
+(`@openclaw/discord`) installed into `$OPENCLAW_STATE_DIR/npm` — a host bind
+mount, so it can't be baked into the image. The gateway entrypoint installs it
+automatically on **first boot**; this warning appears only if that install was
+skipped (e.g. `OPENCLAW_INSTALL_DISCORD_PLUGIN=0`), failed (no network), or the
+image predates the auto-install.
+
+**Fix:**
+```bash
+docker exec openclaw-gateway openclaw plugins install @openclaw/discord --pin
+make restart
+```
+A normal `make restart` on a current image is enough — the entrypoint installs
+the plugin before launching the gateway if it isn't already present.
+
 ## Can't Access Host localhost From Container
 
 **Symptom:** An agent inside the Docker container can't reach a dev server running on the host at `127.0.0.1:<port>`. `curl http://127.0.0.1:4000` fails with "Connection refused".

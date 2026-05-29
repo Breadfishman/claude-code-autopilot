@@ -297,7 +297,10 @@ if [[ -z "$BOT_TOKEN" ]]; then
   exit 0
 fi
 
-# Enable Discord plugin if not already enabled
+# Install the official external Discord plugin (idempotent), then enable it.
+# The gateway entrypoint already auto-installs this on first boot; this is a
+# fallback for older images or non-Docker setups. --pin records the version.
+openclaw plugins install @openclaw/discord --pin 2>/dev/null || true
 openclaw plugins enable discord 2>/dev/null || true
 
 # Add Discord channel to OpenClaw

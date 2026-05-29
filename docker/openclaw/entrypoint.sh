@@ -81,6 +81,28 @@ fi
 export GIT_COMMITTER_NAME="${GIT_COMMITTER_NAME:-${GIT_AUTHOR_NAME:-}}"
 export GIT_COMMITTER_EMAIL="${GIT_COMMITTER_EMAIL:-${GIT_AUTHOR_EMAIL:-}}"
 
+# Ensure the official Discord plugin is installed (idempotent).
+#
+# OpenClaw installs external plugins into $OPENCLAW_STATE_DIR/npm, which is a
+# host bind mount — so the plugin CANNOT be baked into the image (the mount
+# would shadow it at runtime). Instead we install on first boot and let the
+# pinned npm record persist in the state dir; later boots see it present and
+# skip the network install. Set OPENCLAW_INSTALL_DISCORD_PLUGIN=0 to opt out.
+OPENCLAW_DISCORD_PLUGIN="${OPENCLAW_DISCORD_PLUGIN:-@openclaw/discord}"
+ensure_discord_plugin() {
+  [[ "${OPENCLAW_INSTALL_DISCORD_PLUGIN:-1}" == "1" ]] || return 0
+  if [[ -d "$OPENCLAW_STATE_DIR/npm/node_modules/@openclaw/discord" ]]; then
+    return 0
+  fi
+  echo "[entrypoint] Installing OpenClaw Discord plugin (${OPENCLAW_DISCORD_PLUGIN})..."
+  if gosu node openclaw plugins install "$OPENCLAW_DISCORD_PLUGIN" --pin; then
+    echo "[entrypoint] Discord plugin installed."
+  else
+    echo "[entrypoint] WARN: Discord plugin install failed (continuing). Install manually with:" >&2
+    echo "[entrypoint]   docker exec openclaw-gateway openclaw plugins install @openclaw/discord --pin" >&2
+  fi
+}
+
 start_display_stack() {
   export DISPLAY=:99
 
@@ -109,6 +131,7 @@ trap 'browser-manager cleanup 2>/dev/null || true' EXIT
 
 case "$mode" in
   gateway)
+    ensure_discord_plugin
     start_display_stack
     exec gosu node openclaw gateway
     ;;
