@@ -66,6 +66,9 @@ services:
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
       DEFAULT_THINKING_BUDGET: ${DEFAULT_THINKING_BUDGET:-}
       CLAUDE_PROXY_ENABLE_ADMIN_API: ${CLAUDE_PROXY_ENABLE_ADMIN_API:-true}
+      # How concurrent requests on the same conversation are handled.
+      # `queue` serializes them instead of erroring/racing.
+      CLAUDE_PROXY_SAME_CONVERSATION_POLICY: ${CLAUDE_PROXY_SAME_CONVERSATION_POLICY:-queue}
       # Preventive self-restart ceiling. The container self-exits after this
       # many hours of uptime so Docker (via `restart: unless-stopped`) brings
       # it back with a clean slate. Defense-in-depth for the rare case where
