@@ -83,6 +83,12 @@ services:
       - claude-proxy-home:/home/node/.claude
       - ${HOST_REPOS_DIR:-/opt/repos}:${HOST_REPOS_DIR:-/opt/repos}
       - claude-max-proxy-data:/data
+      # Read-only view of the gateway's OpenClaw state so inbound Discord
+      # media saved at /home/node/.openclaw/media/inbound/*.png resolves to
+      # the same absolute path inside this container (the claude CLI reads
+      # the image by path). Without this the model says it "can't read"
+      # the screenshot. Must match the gateway's destination exactly.
+      - ${OPENCLAW_HOST_STATE_DIR:-${HOME}/.openclaw}:/home/node/.openclaw:ro
       # gh CLI auth + git identity. gh needs write access so token refresh
       # works; gitconfig is read-only since the container shouldn't mutate
       # the host's global git config. User must have run `gh auth login`
