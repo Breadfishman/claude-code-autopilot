@@ -366,3 +366,7 @@ The README is the fast path. Detailed guides live in `docs/*.md` and `.claude/do
 3. **Always verify** — Run tests/lint/build or provide manual steps
 4. **One bounded retry** — Triage → patch → verify once if it fails
 5. **No destructive commands** — Unless explicitly approved
+
+## Contributors
+
+We're happy to welcome [@Breadfishman](https://github.com/Breadfishman)'s contributions to our work this project. They collaborated closely on the project under our shared account.
