@@ -1,5 +1,6 @@
 {
   "model": "sonnet",
+  "effortLevel": "high",
   "enabledPlugins": {
     "typescript-lsp@claude-plugins-official": true,
     "gopls-lsp@claude-plugins-official": true,
