@@ -1,0 +1,3 @@
+autopilot	autopilot.md	Full staged pipeline + mandatory verification (current kit)
+minimal	minimal.md	Karpathy minimalist: one strong model, surgical edits
+native	native.md	Platform-first: native goal-setting, lean scaffolding

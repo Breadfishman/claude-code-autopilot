@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+# run-eval.sh — run the mode × task matrix through a runner, write a results TSV,
+# and print a scoreboard. Each cell runs in its own isolated temp workdir (a fresh
+# copy of the task's seed/), with the mode's overlay applied as CLAUDE.md.
+#
+# Isolation note: synthetic fixture tasks use temp-dir isolation. For a real-repo
+# corpus, swap the per-cell setup to a `wt` worktree off a base commit.
+set -uo pipefail
+
+EVAL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+MODES_TSV="$EVAL_DIR/modes/modes.tsv"
+TASKS_DIR="$EVAL_DIR/tasks"
+RUNNERS_DIR="$EVAL_DIR/runners"
+
+RUNNER="mock-solve"; MODES=""; TASKS=""; OUT=""; QUIET=0
+
+usage() {
+  cat <<EOF
+run-eval.sh — measure modes against tasks
+
+Usage: run-eval.sh [--runner <name>] [--modes "a b"] [--tasks "id id"] [--out <file>] [--quiet]
+  --runner   runners/<name>.sh   (default: mock-solve; real runner: claude)
+  --modes    subset of modes     (default: all in modes/modes.tsv)
+  --tasks    subset of task ids   (default: all dirs in tasks/)
+  --out      results TSV path     (default: results/run-<timestamp>.tsv)
+  --quiet    suppress scoreboard (prints only the results path)
+EOF
+}
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --runner) RUNNER="${2:?}"; shift 2;;
+    --modes)  MODES="${2:?}";  shift 2;;
+    --tasks)  TASKS="${2:?}";  shift 2;;
+    --out)    OUT="${2:?}";    shift 2;;
+    --quiet)  QUIET=1; shift;;
+    -h|--help) usage; exit 0;;
+    *) echo "run-eval: unknown arg '$1'" >&2; usage; exit 1;;
+  esac
+done
+
+RUNNER_SH="$RUNNERS_DIR/$RUNNER.sh"
+[ -f "$RUNNER_SH" ] || { echo "run-eval: no such runner '$RUNNER' ($RUNNER_SH)" >&2; exit 1; }
+[ -z "$MODES" ] && MODES="$(awk -F'\t' 'NF{print $1}' "$MODES_TSV")"
+[ -z "$TASKS" ] && TASKS="$(for d in "$TASKS_DIR"/*/; do [ -d "$d" ] && basename "$d"; done)"
+
+if [ -z "$OUT" ]; then
+  mkdir -p "$EVAL_DIR/results"
+  OUT="$EVAL_DIR/results/run-$(date +%Y%m%d-%H%M%S).tsv"
+fi
+printf 'mode\ttask\trunner\tpass\tseconds\ttokens\n' >"$OUT"
+
+mode_overlay() { awk -F'\t' -v m="$1" '$1==m{print $2; exit}' "$MODES_TSV"; }
+
+run_cell() {
+  local mode="$1" task="$2" task_dir="$TASKS_DIR/$2"
+  [ -d "$task_dir/seed" ] || { echo "run-eval: task '$task' has no seed/ — skipping" >&2; return; }
+  local workdir metrics overlay start end secs tokens pass
+  workdir="$(mktemp -d)"; metrics="$(mktemp)"
+  cp -R "$task_dir/seed/." "$workdir/"
+  overlay="$(mode_overlay "$mode")"
+  [ -n "$overlay" ] && [ -f "$EVAL_DIR/modes/$overlay" ] && cp "$EVAL_DIR/modes/$overlay" "$workdir/CLAUDE.md"
+
+  start="$(date +%s)"
+  bash "$RUNNER_SH" "$workdir" "$task_dir" "$metrics" >/dev/null 2>&1 || true
+  end="$(date +%s)"; secs=$((end - start))
+  tokens="$(awk -F= '/^tokens=/{print $2; exit}' "$metrics" 2>/dev/null || true)"; [ -n "$tokens" ] || tokens=NA
+
+  if ( cd "$workdir" && bash "$task_dir/verify.sh" ) >/dev/null 2>&1; then pass=1; else pass=0; fi
+  printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$mode" "$task" "$RUNNER" "$pass" "$secs" "$tokens" >>"$OUT"
+  rm -rf "$workdir" "$metrics"
+}
+
+for mode in $MODES; do
+  for task in $TASKS; do
+    run_cell "$mode" "$task"
+  done
+done
+
+if [ "$QUIET" = "1" ]; then echo "$OUT"; exit 0; fi
+
+echo
+echo "Runner: $RUNNER"
+awk -F'\t' '
+NR>1 { tot[$1]++; sec[$1]+=$5; if($4==1) ok[$1]++; gt++; gs+=$5; if($4==1) gok++ }
+END {
+  printf "%-12s %-9s %-8s\n","MODE","PASS","AVG_S";
+  n=asorti(tot, idx);
+  for(i=1;i<=n;i++){ m=idx[i]; printf "%-12s %d/%-7d %.1f\n", m, ok[m]+0, tot[m], sec[m]/tot[m] }
+  printf "%-12s %d/%-7d %.1f\n","(overall)", gok+0, gt, (gt? gs/gt : 0);
+}' "$OUT" 2>/dev/null || \
+awk -F'\t' '
+NR>1 { tot[$1]++; sec[$1]+=$5; if($4==1) ok[$1]++; gt++; gs+=$5; if($4==1) gok++ }
+END {
+  printf "%-12s %-9s %-8s\n","MODE","PASS","AVG_S";
+  for(m in tot){ printf "%-12s %d/%-7d %.1f\n", m, ok[m]+0, tot[m], sec[m]/tot[m] }
+  printf "%-12s %d/%-7d %.1f\n","(overall)", gok+0, gt, (gt? gs/gt : 0);
+}' "$OUT"
+echo
+echo "results: $OUT"
