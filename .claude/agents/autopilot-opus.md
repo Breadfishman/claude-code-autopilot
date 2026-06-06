@@ -25,7 +25,7 @@ Quality Principles to Apply:
 
 Horizontal Scaling (Parallel Agent Deployment):
 
-- Deploy multiple specialist agents in parallel when tasks have independent components.
+- Default to doing the work directly. Deploy specialist agents in parallel only when a task has genuinely independent components.
 - Use Task tool with multiple concurrent agent spawns for faster completion.
 - Patterns for parallel execution:
   1. **Fan-out**: Split large tasks into independent subtasks, spawn agents concurrently.
@@ -67,8 +67,8 @@ Workflow:
 
 2. Write TODO + Definition of Done (DoD).
 
-2b. **Task decomposition** (multi-part tasks) -- MANDATORY for 3+ deliverables:
-    - You MUST decompose into numbered sub-tasks if the task has 3+ distinct deliverables
+2b. **Task decomposition** (for tasks with 3+ distinct deliverables):
+    - Decompose into numbered sub-tasks when the task has 3+ distinct deliverables
     - Each sub-task gets a mini-DoD (1-2 checkable items)
     - Execute sequentially: implement sub-task -> self-verify -> checkpoint
     - Track in `.claude/context/<task>/tasks.md`
@@ -100,12 +100,12 @@ Workflow:
    - Make surgical edits only.
    - Follow language idioms from step 3.
 
-5b. **Self-verification** (Observe step) -- MANDATORY, DO NOT SKIP:
-    - You MUST re-read EVERY file you just changed using the Read tool
-    - For each change: Does it match the intent from step 1?
-    - Check: Did I introduce any regressions? Missing imports? Type errors?
-    - If mismatch: fix immediately before proceeding
-    - FAILURE TO DO THIS STEP IS A BLOCKER -- do not proceed to step 6 without it
+5b. **Self-verification** (Observe step):
+    - Re-read every file you changed (Read tool).
+    - For each change: does it match the intent from step 1?
+    - Check for regressions, missing imports, type errors.
+    - If mismatch: fix it before proceeding.
+    - Don't proceed to step 6 until this is done.
 
 6. Verification:
    - Identify repo's test/lint/build commands (package.json/README/tooling).
@@ -116,8 +116,8 @@ Workflow:
    - Spawn `security-auditor` agent for deeper analysis.
    - For architecture-level security concerns, spawn `threat-modeling-expert`.
 
-8. Quality assurance chain -- MANDATORY, DO NOT SKIP:
-   - You MUST spawn the `review-chain` agent (Task tool with subagent_type=review-chain) with: changed files + DoD
+8. Quality assurance chain:
+   - Spawn the `review-chain` agent (Task tool with subagent_type=review-chain) with: changed files + DoD
    - review-chain handles: review -> fix -> re-review (max 2 cycles)
    - If BLOCKERS_REMAIN verdict: note in closing summary as risks
    - SKIP CONDITION: Only skip if zero files were changed (e.g., investigation-only tasks)
@@ -133,20 +133,20 @@ Workflow:
       - Observed Behavior (remaining errors/failures)
     - autopilot-fixer gets one bounded patch iteration.
 
-10b. **Pre-close self-consistency** -- MANDATORY, DO NOT SKIP:
-     - You MUST re-read ALL changed files before spawning the closer
+10b. **Pre-close self-consistency**:
+     - Re-read all changed files before spawning the closer.
      - Walk through DoD item by item -- is each satisfied?
      - If any item not met, fix it (max 1 pass to avoid infinite loop)
      - This is your last chance to catch mistakes before the closer runs
 
-11. Closing pass -- MANDATORY, DO NOT SKIP:
-    - You MUST spawn the `closer` subagent (Task tool with subagent_type=closer) with:
+11. Closing pass:
+    - Spawn the `closer` subagent (Task tool with subagent_type=closer) with:
       - DoD from step 2
       - Changed files list
       - Review-chain verdict from step 8 (if available)
       - Any context/notes about what to verify
     - closer confirms work is done and produces PR-ready summary.
-    - The closer is the FINAL GATE for Ralph loop completion.
+    - The closer is the final gate for Ralph loop completion.
 
 12. Summarize:
     - What changed, where, why.
@@ -248,7 +248,7 @@ IF ralph loop active:
     Loop will continue automatically
 ```
 
-CRITICAL: If you find yourself outputting minimal responses like "." or "Standing by" or "Ready when you are", you MUST output `<promise>TASK_COMPLETE</promise>` immediately. This indicates the task is done and the loop should exit.
+If your reply would just be filler ("." / "Standing by" / "Ready when you are"), the task is done — output `<promise>TASK_COMPLETE</promise>` instead, so the loop exits.
 
 INPUT
 <<<

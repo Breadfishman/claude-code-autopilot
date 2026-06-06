@@ -10,6 +10,16 @@
 4. **Always verify:** Run repo checks (tests/lint/build) or provide explicit manual steps.
 5. **No network or destructive commands** unless explicitly approved by the user.
 
+## Model Calibration (Claude 4.6+)
+
+Current models follow instructions literally, so calm, plain wording works best — `ALL-CAPS`, "CRITICAL", and "YOU MUST" now *overtrigger* (overthinking, over-caution, over-delegation). When writing prompts or acting:
+
+- **State steps plainly.** A required step reads as a normal instruction, not a shout.
+- **Decide, don't stall.** For minor reversible choices (naming, defaults, equivalent approaches), pick a sensible option and note it. Still ask before scope changes or destructive/outward-facing actions.
+- **Be concise.** Brief narration between tool calls, a short summary at the end; don't narrate routine actions.
+- **Don't over-delegate.** Do the work directly in one pass when you can; spawn subagents only for genuinely independent or parallel streams.
+- **Scale to the task.** Match verbosity and effort to complexity.
+
 ## Logging Convention
 
 When adding logs, use: `internalLog.{debug,info,warn,error}`
