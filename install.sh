@@ -803,9 +803,12 @@ CCA_ALIAS="alias cca='${DEST_ABS}/.claude/bin/claude-named --dangerously-skip-pe
 CCA_COMMENT="# Claude Code autopilot alias"
 CCX_ALIAS="alias ccx='${DEST_ABS}/.claude/bin/codex-local'"
 CCX_COMMENT="# Codex local-home alias (uses ./.codex-home)"
+WT_ALIAS="alias wt='${DEST_ABS}/.claude/bin/wt'"
+WT_COMMENT="# Worktree manager for isolated parallel agent sessions"
 
-# Ensure local codex wrapper is executable.
-chmod +x "${DEST_ABS}/.claude/bin/codex-local" 2>/dev/null || true
+# Ensure local wrappers + worktree tooling are executable.
+chmod +x "${DEST_ABS}/.claude/bin/codex-local" "${DEST_ABS}/.claude/bin/wt" 2>/dev/null || true
+chmod +x "${DEST_ABS}/.claude/scripts/worktree-bootstrap.sh" "${DEST_ABS}/.claude/scripts/worktree-teardown.sh" 2>/dev/null || true
 
 for rcfile in "$USER_HOME/.bashrc" "$USER_HOME/.zshrc"; do
   if [[ -f "$rcfile" ]] || [[ "$(basename "$rcfile")" == ".bashrc" ]]; then
@@ -821,6 +824,12 @@ for rcfile in "$USER_HOME/.bashrc" "$USER_HOME/.zshrc"; do
       echo "  Added ccx alias to $rcfile"
     else
       echo "  ccx alias already present in $rcfile"
+    fi
+    if ! grep -qF "alias wt=" "$rcfile" 2>/dev/null; then
+      printf '%s\n%s\n' "$WT_COMMENT" "$WT_ALIAS" >> "$rcfile"
+      echo "  Added wt alias to $rcfile"
+    else
+      echo "  wt alias already present in $rcfile"
     fi
   fi
 done
