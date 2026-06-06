@@ -1,0 +1,254 @@
+#!/usr/bin/env bash
+# wt — isolated git worktrees for parallel agent/Claude sessions.
+#
+# Each worktree gets its own working files, index, and branch (agent/<slug>) under
+# a sibling .worktrees/<repo-name>/ dir, plus a unique COMPOSE_PROJECT_NAME and a
+# deterministic, collision-free WT_PORT_OFFSET — so multiple sessions in one repo
+# stop clobbering each other. Concurrency-safe via an flock'd registry.
+#
+#   wt new <slug> [--base <ref>] [--deps] [--up] [--no-bootstrap]
+#   wt list
+#   wt info <slug>
+#   wt bootstrap <slug> [--deps]
+#   wt rm <slug> [--force] [--keep-branch]
+#   wt prune
+#   wt help
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BOOTSTRAP="$SCRIPT_DIR/../scripts/worktree-bootstrap.sh"
+TEARDOWN="$SCRIPT_DIR/../scripts/worktree-teardown.sh"
+OFFSET_STEP=10
+OFFSET_MAX=990
+
+die() { printf 'wt: %s\n' "$*" >&2; exit 1; }
+log() { printf 'wt: %s\n' "$*" >&2; }
+
+require_repo() {
+  REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || die "not inside a git repository"
+  REPO_NAME="$(basename "$REPO_ROOT")"
+  WT_ROOT="$(dirname "$REPO_ROOT")/.worktrees/$REPO_NAME"
+  REGISTRY="$WT_ROOT/.registry.tsv"
+  LOCK="$WT_ROOT/.lock"
+  mkdir -p "$WT_ROOT"
+  [ -f "$REGISTRY" ] || : >"$REGISTRY"
+}
+
+acquire_lock() {
+  exec 9>"$LOCK" || die "cannot open lock file: $LOCK"
+  command -v flock >/dev/null 2>&1 && flock -x 9 || true
+}
+release_lock() {
+  command -v flock >/dev/null 2>&1 && flock -u 9 2>/dev/null || true
+  exec 9>&- 2>/dev/null || true
+}
+
+validate_slug() {
+  local s="${1:-}"
+  [ -n "$s" ] || die "slug required"
+  [[ "$s" =~ ^[a-z0-9][a-z0-9._-]*$ ]] || die "invalid slug '$s' (lowercase letters, digits, . _ - ; must start alphanumeric)"
+  [ "${#s}" -le 40 ] || die "slug too long (max 40 chars)"
+}
+
+reg_get() { awk -F'\t' -v s="$1" -v f="$2" '$1==s{print $f; exit}' "$REGISTRY" 2>/dev/null || true; }
+reg_has() { [ -n "$(reg_get "$1" 1)" ]; }
+
+free_offset() {
+  local off=0
+  while awk -F'\t' -v o="$off" '$2==o{f=1} END{exit !f}' "$REGISTRY" 2>/dev/null; do
+    off=$((off + OFFSET_STEP))
+    [ "$off" -le "$OFFSET_MAX" ] || die "no free port offset (max worktrees reached)"
+  done
+  printf '%s' "$off"
+}
+
+cmd_new() {
+  require_repo
+  local slug="" base="" up=0 deps=0 nobootstrap=0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --base) base="${2:-}"; [ -n "$base" ] || die "--base needs a ref"; shift 2;;
+      --up) up=1; shift;;
+      --deps) deps=1; shift;;
+      --no-bootstrap) nobootstrap=1; shift;;
+      -*) die "unknown flag: $1";;
+      *) [ -z "$slug" ] && slug="$1" || die "unexpected argument: $1"; shift;;
+    esac
+  done
+  validate_slug "$slug"
+
+  local wt_path="$WT_ROOT/$slug" branch="agent/$slug" project="${REPO_NAME}-${slug}" off
+
+  acquire_lock
+  if reg_has "$slug"; then
+    log "'$slug' already exists — re-bootstrapping (idempotent)"
+    off="$(reg_get "$slug" 2)"
+  else
+    off="$(free_offset)"
+    if [ -n "$base" ]; then
+      git worktree add -b "$branch" "$wt_path" "$base" >&2 || { release_lock; die "git worktree add failed (base '$base')"; }
+    else
+      git worktree add -b "$branch" "$wt_path" >&2 || { release_lock; die "git worktree add failed"; }
+    fi
+    printf '%s\t%s\t%s\t%s\t%s\n' "$slug" "$off" "$branch" "$wt_path" "$(date +%s)" >>"$REGISTRY"
+  fi
+  release_lock
+
+  if [ "$nobootstrap" = "0" ]; then
+    if [ "$deps" = "1" ]; then
+      bash "$BOOTSTRAP" "$wt_path" "$slug" "$off" "$project" --deps
+    else
+      bash "$BOOTSTRAP" "$wt_path" "$slug" "$off" "$project"
+    fi
+  fi
+
+  if [ "$up" = "1" ]; then
+    if command -v docker >/dev/null 2>&1; then
+      ( cd "$wt_path" && docker compose -p "$project" up -d >&2 ) || log "compose up failed (non-fatal)"
+    else
+      log "docker unavailable — skipping --up"
+    fi
+  fi
+
+  cat <<EOF
+created worktree '$slug'
+  path:    $wt_path
+  branch:  $branch
+  project: $project
+  ports:   base + offset $off   (services read \$WT_PORT_OFFSET)
+  next:    cd "$wt_path"
+EOF
+}
+
+cmd_list() {
+  require_repo
+  if [ ! -s "$REGISTRY" ]; then echo "no worktrees"; return 0; fi
+  printf '%-22s %-7s %-20s %s\n' SLUG OFFSET BRANCH PATH
+  local slug off branch path created
+  while IFS=$'\t' read -r slug off branch path created; do
+    [ -n "$slug" ] || continue
+    local note=""; [ -d "$path" ] || note="  (MISSING)"
+    printf '%-22s %-7s %-20s %s%s\n' "$slug" "$off" "$branch" "$path" "$note"
+  done <"$REGISTRY"
+}
+
+cmd_info() {
+  require_repo
+  local slug="${1:-}"; validate_slug "$slug"
+  reg_has "$slug" || die "no such worktree: '$slug'"
+  echo "slug:    $slug"
+  echo "offset:  $(reg_get "$slug" 2)"
+  echo "branch:  $(reg_get "$slug" 3)"
+  echo "path:    $(reg_get "$slug" 4)"
+  echo "project: ${REPO_NAME}-${slug}"
+}
+
+cmd_bootstrap() {
+  require_repo
+  local slug="${1:-}"; shift || true
+  validate_slug "$slug"
+  reg_has "$slug" || die "no such worktree: '$slug'"
+  bash "$BOOTSTRAP" "$(reg_get "$slug" 4)" "$slug" "$(reg_get "$slug" 2)" "${REPO_NAME}-${slug}" "$@"
+}
+
+cmd_rm() {
+  require_repo
+  local slug="" force=0 keepbranch=0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --force) force=1; shift;;
+      --keep-branch) keepbranch=1; shift;;
+      -*) die "unknown flag: $1";;
+      *) [ -z "$slug" ] && slug="$1" || die "unexpected argument: $1"; shift;;
+    esac
+  done
+  validate_slug "$slug"
+  reg_has "$slug" || die "no such worktree: '$slug'"
+
+  local path branch project
+  path="$(reg_get "$slug" 4)"; branch="$(reg_get "$slug" 3)"; project="${REPO_NAME}-${slug}"
+
+  bash "$TEARDOWN" "$path" "$project" || log "teardown reported issues (continuing)"
+
+  acquire_lock
+  if [ -d "$path" ]; then
+    if [ "$force" = "1" ]; then
+      git worktree remove --force "$path" >&2 || log "git worktree remove --force failed"
+    else
+      git worktree remove "$path" >&2 || { release_lock; die "worktree '$slug' has changes — commit/push them or use --force"; }
+    fi
+  fi
+  git worktree prune >&2 2>/dev/null || true
+  if [ "$keepbranch" = "0" ]; then
+    git branch -D "$branch" >&2 2>/dev/null || log "branch '$branch' not deleted (unmerged or already gone)"
+  fi
+  local tmp; tmp="$(mktemp)"
+  awk -F'\t' -v s="$slug" '$1!=s' "$REGISTRY" >"$tmp" && mv "$tmp" "$REGISTRY"
+  release_lock
+
+  echo "removed worktree '$slug'"
+}
+
+cmd_prune() {
+  require_repo
+  git worktree prune >&2 2>/dev/null || true
+  acquire_lock
+  local tmp slug off branch path created
+  tmp="$(mktemp)"
+  while IFS=$'\t' read -r slug off branch path created; do
+    [ -n "$slug" ] || continue
+    if [ -d "$path" ]; then
+      printf '%s\t%s\t%s\t%s\t%s\n' "$slug" "$off" "$branch" "$path" "$created" >>"$tmp"
+    else
+      log "pruned stale registry entry '$slug'"
+    fi
+  done <"$REGISTRY"
+  mv "$tmp" "$REGISTRY"
+  release_lock
+  echo "prune complete"
+}
+
+usage() {
+  cat <<'EOF'
+wt — isolated git worktrees for parallel agent sessions
+
+Usage:
+  wt new <slug> [--base <ref>] [--deps] [--up] [--no-bootstrap]
+  wt list
+  wt info <slug>
+  wt bootstrap <slug> [--deps]
+  wt rm <slug> [--force] [--keep-branch]
+  wt prune
+  wt help
+
+Layout:
+  Worktree:  <repo>/../.worktrees/<repo-name>/<slug>   on branch agent/<slug>
+  Isolation: each worktree's .env gets a unique COMPOSE_PROJECT_NAME and a
+             collision-free WT_PORT_OFFSET. Have your compose/dev config add
+             $WT_PORT_OFFSET to base ports so parallel stacks never collide.
+
+Flags:
+  --base <ref>     branch the worktree off <ref> instead of current HEAD
+  --deps           install dependencies (pnpm/uv/npm, availability-gated)
+  --up             docker compose up -d after bootstrap
+  --no-bootstrap   create the worktree only (no .env/ports/deps)
+  --force          (rm) discard local changes when removing
+  --keep-branch    (rm) keep agent/<slug> instead of deleting it
+EOF
+}
+
+main() {
+  local cmd="${1:-help}"; shift || true
+  case "$cmd" in
+    new)            cmd_new "$@";;
+    list|ls)        cmd_list "$@";;
+    info)           cmd_info "$@";;
+    bootstrap)      cmd_bootstrap "$@";;
+    rm|remove)      cmd_rm "$@";;
+    prune)          cmd_prune "$@";;
+    help|-h|--help) usage;;
+    *)              die "unknown command '$cmd' (try: wt help)";;
+  esac
+}
+
+main "$@"
