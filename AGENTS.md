@@ -1,6 +1,53 @@
-# AGENTS.md - Codex Compatibility for Claude Code Autopilot
+# AGENTS.md — Claude Code Autopilot Kit
 
-This repository is OpenClaw-first, but supports OpenAI Codex workflows.
+> Follows the [AGENTS.md](https://agents.md/) open standard so any agent (Claude Code,
+> OpenAI Codex, Cursor, Copilot, Gemini CLI, …) gets the same guidance on task start.
+> This repository is OpenClaw-first but supports OpenAI Codex workflows.
+
+## Project Overview
+
+A portable `.claude/` bundle that turns Claude Code into a self-verifying engineering
+loop (fix → build → run → test → confirm → commit → report), plus optional OpenClaw
+(Discord/browser/remote) and CrewAI (planner crew) Docker stacks. It is **a kit that
+installs into other repos**, not a buildable application — there is no root
+`package.json`/`pyproject.toml`. Hooks are Python 3 (stdlib only), bootstrap/scripts are
+bash, agents/skills are Markdown with YAML frontmatter.
+
+## Setup, Build & Validation
+
+Working **on this kit itself**:
+
+```bash
+# Validate the bundle (dir structure, settings JSON, hook syntax, agent frontmatter)
+bash .claude/extras/doctor.sh
+
+# Functional-test the bash safety guard (allowed vs blocked patterns)
+python3 .claude/scripts/test_guard.py
+
+# Re-install / refresh the kit into a target repo (--force preserves logs/ + vendor/)
+bash install.sh --repo NorkzYT/claude-code-autopilot --ref main --force
+```
+
+There is no compile step. "Build/Test" for changes here means: run `doctor.sh`, run
+`test_guard.py` if you touched `hooks/guard_*.py`, and confirm hooks still read stdin
+JSON and exit with the right code. When the kit is **installed in a target repo**, the
+build/test/run commands come from that repo's generated `TOOLS.md` (see the Task
+Completion Protocol below).
+
+## Code Style & Conventions
+
+- **Python hooks:** read a JSON event from stdin; signal via exit code (`0` allow, `2`
+  block) plus stdout (JSON for Stop/decision hooks, plain text for `UserPromptSubmit`
+  injection). Keep them fast — hooks have per-call timeouts. Stdlib only; no new deps.
+- **Shell:** bash, idempotent, fail-fast. Match the style of neighbouring scripts.
+- **Agents/skills:** Markdown with YAML frontmatter (`name`, `description`, `model`,
+  `tools`). Mirror the structure of existing files in `.claude/agents/` and `.claude/skills/`.
+- **Smallest change that satisfies the task** — no drive-by refactors (the Constitution
+  rule in `.claude/CLAUDE.md`).
+- **Commits:** [Conventional Commits](https://www.conventionalcommits.org/)
+  (`type(scope): subject`, scopes like `openclaw`/`crewai`/`install`). Work on a feature
+  branch, **never** `main`. **Never** add `Co-Authored-By` trailers — the generated
+  `.git/hooks/commit-msg` blocks them.
 
 ## Primary Policy Files
 
