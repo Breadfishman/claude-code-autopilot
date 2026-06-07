@@ -9,7 +9,15 @@ command -v claude >/dev/null 2>&1 || { echo "[claude-runner] claude CLI not foun
 
 prompt="$(cat "$task_dir/task.md")"
 cd "$workdir"
-out="$(claude -p "$prompt" --permission-mode acceptEdits --output-format json 2>/dev/null || true)"
+# Headless run in the isolated workdir. skip-permissions avoids hangs on prompts
+# (the dir is a throwaway fixture); a timeout bounds a stuck session.
+TIMEOUT="${WT_EVAL_TIMEOUT:-240}"
+runner=(claude -p "$prompt" --dangerously-skip-permissions --output-format json)
+if command -v timeout >/dev/null 2>&1; then
+  out="$(timeout "$TIMEOUT" "${runner[@]}" 2>/dev/null || true)"
+else
+  out="$("${runner[@]}" 2>/dev/null || true)"
+fi
 
 tokens="$(printf '%s' "$out" | python3 -c '
 import sys, json
