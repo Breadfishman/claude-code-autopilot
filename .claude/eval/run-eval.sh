@@ -12,16 +12,18 @@ MODES_TSV="$EVAL_DIR/modes/modes.tsv"
 TASKS_DIR="$EVAL_DIR/tasks"
 RUNNERS_DIR="$EVAL_DIR/runners"
 
-RUNNER="mock-solve"; MODES=""; TASKS=""; OUT=""; QUIET=0
+RUNNER="mock-solve"; MODES=""; TASKS=""; OUT=""; QUIET=0; REPS=1; AGENTS=0
 
 usage() {
   cat <<EOF
 run-eval.sh — measure modes against tasks
 
-Usage: run-eval.sh [--runner <name>] [--modes "a b"] [--tasks "id id"] [--out <file>] [--quiet]
+Usage: run-eval.sh [--runner <name>] [--modes "a b"] [--tasks "id id"] [--reps N] [--agents] [--out <file>] [--quiet]
   --runner   runners/<name>.sh   (default: mock-solve; real runner: claude)
   --modes    subset of modes     (default: all in modes/modes.tsv)
   --tasks    subset of task ids   (default: all dirs in tasks/)
+  --reps     repetitions per (mode,task) cell, for variance (default: 1)
+  --agents   symlink the kit's .claude/agents into each workdir (pipeline fidelity)
   --out      results TSV path     (default: results/run-<timestamp>.tsv)
   --quiet    suppress scoreboard (prints only the results path)
 EOF
@@ -34,6 +36,8 @@ while [ $# -gt 0 ]; do
     --tasks)  TASKS="${2:?}";  shift 2;;
     --out)    OUT="${2:?}";    shift 2;;
     --quiet)  QUIET=1; shift;;
+    --reps)   REPS="${2:?}";   shift 2;;
+    --agents) AGENTS=1; shift;;
     -h|--help) usage; exit 0;;
     *) echo "run-eval: unknown arg '$1'" >&2; usage; exit 1;;
   esac
@@ -60,6 +64,11 @@ run_cell() {
   cp -R "$task_dir/seed/." "$workdir/"
   overlay="$(mode_overlay "$mode")"
   [ -n "$overlay" ] && [ -f "$EVAL_DIR/modes/$overlay" ] && cp "$EVAL_DIR/modes/$overlay" "$workdir/CLAUDE.md"
+  # Fidelity: expose the kit's real agents so a pipeline mode can actually orchestrate.
+  if [ "$AGENTS" = "1" ] && [ -d "$EVAL_DIR/../agents" ]; then
+    mkdir -p "$workdir/.claude"
+    ln -s "$(cd "$EVAL_DIR/../agents" && pwd)" "$workdir/.claude/agents"
+  fi
 
   start="$(date +%s)"
   bash "$RUNNER_SH" "$workdir" "$task_dir" "$metrics" >/dev/null 2>&1 || true
@@ -73,7 +82,9 @@ run_cell() {
 
 for mode in $MODES; do
   for task in $TASKS; do
-    run_cell "$mode" "$task"
+    for ((rep = 1; rep <= REPS; rep++)); do
+      run_cell "$mode" "$task"
+    done
   done
 done
 
