@@ -1,0 +1,85 @@
+# Eval Findings — Does the multi-agent pipeline beat a lean prompt? (June 2026)
+
+*Recorded on branch `modernize/2026-tooling-refresh`. Reproduce with `.claude/eval/`.*
+
+## Question
+
+Claude Code Autopilot wraps every substantive task in a multi-agent pipeline
+(triage → implement → `review-chain` → `closer`). On **Opus 4.8**, does that
+orchestration actually produce better results than a lean, single-pass prompt —
+or is it overhead the platform's strong models no longer need?
+
+## Method
+
+A mode×task matrix runner (`run-eval.sh`). Each cell runs in an isolated
+workdir seeded from a task fixture, with the mode's `CLAUDE.md` overlay applied,
+then an objective **hidden** test (`verify.sh`) decides pass/fail. Tokens and
+wall-clock are recorded.
+
+- **Modes** (the treatment): `autopilot` (full staged pipeline), `minimal`
+  (Karpathy surgical: one clean pass, no orchestra), `native` (lean,
+  goal-first).
+- **Runner:** real `claude -p` (2.1.168), headless, in the isolated workdir.
+- **Fidelity:** `--agents` symlinks the kit's real `.claude/agents/` into each
+  workdir so the `autopilot` mode genuinely spawns `review-chain`/`closer`.
+- **Variance:** `--reps` repeats each cell.
+- **Discrimination:** harder tasks give the agent only a prose spec + broken
+  seed; the comprehensive test is **hidden** (never in the workdir). Trap tasks
+  were validated to actually catch a plausible-but-wrong fix.
+
+## Results — 87 live sessions, three escalating difficulty tiers
+
+All tiers: **100% pass in every mode.** No correctness difference anywhere.
+The only consistent signal is cost (`minimal` always cheapest):
+
+| Tier | Tasks (× modes × reps = cells) | Pass | Tokens (min / nat / auto) | Sec (min / nat / auto) |
+|---|---|---|---|---|
+| **1 — easy/moderate** | 5 one-function bugs (×3×1 = 15) | 15/15 all modes | 2992 / 3275 / 3058 | 18.8 / 25.2 / 20.4 |
+| **2 — hard** *(--agents)* | 3 hidden-test, multi-file, subtle edges (×3×3 = 27) | 27/27 all modes | 3440 / 3691 / **3848** | 23.4 / 24.4 / **27.0** |
+| **3 — traps** *(--agents)* | 3 plausible-but-wrong, verification-bait (×3×5 = 45) | 45/45 all modes | 2948 / 3105 / **3329** | 16.7 / 19.7 / **20.8** |
+
+Per-(task × mode) pass-rate in tiers 2 & 3 was **maximal in every cell** (3/3,
+5/5) — including the input-mutation, sum-invariant, and shared-state traps
+designed specifically to require verification.
+
+**Key observation:** in the two tiers run with real agent fidelity (`--agents`),
+`autopilot` is the **most expensive** mode (the orchestration cost is real and
+was previously understated), while delivering **identical** correctness to the
+lean `minimal` mode (~12–24% cheaper).
+
+## Verdict
+
+**Hypothesis — "the pipeline's mandatory verification catches bugs a lean pass
+misses" — is rejected** for the tested task classes. Opus 4.8 catches even
+deliberate traps on its own, in the lean mode. For ordinary coding tasks, the
+multi-agent orchestration is **pure overhead**: same correctness, more cost.
+
+## Honest boundary (not tested)
+
+- **Large / ambiguous / long-horizon** tasks (where a model can lose the thread
+  and decomposition/verification might help) can't be cleanly fixtured and were
+  not tested. That is the one regime where the pipeline might still pay off — and
+  it is exactly what the complexity-router escalates to `complex`/`opus`.
+- The traps are **classic** gotcha patterns (well-represented in training). A
+  truly novel trap might behave differently (though it's also less representative
+  of real bugs).
+
+## Decision
+
+Make a **lean path the default** and **reserve the full pipeline for `complex`
+work** (large/architectural/high-risk). Implemented in
+`.claude/agents/autopilot.md`: the `simple` tier now does implement +
+self-verify + lifecycle-verify and a brief inline review/close (skipping the
+`review-chain` and `closer` subagents); `medium` gets a single reviewer + a
+light closer; `complex` keeps the full pipeline (via `autopilot-opus`). The
+cheap, valuable checks (re-read changed files, build/test/confirm) stay for all
+tiers.
+
+## Reproduce / re-test (e.g. when a new model ships)
+
+```bash
+cd .claude/eval
+bash run-eval.sh --runner claude --agents --reps 5 \
+  --tasks "py-topn-nomutate py-split-bill py-fresh-accumulate" --out results/rerun.tsv
+```
+Deterministic plumbing check (no tokens): `bash test_eval.sh`.
