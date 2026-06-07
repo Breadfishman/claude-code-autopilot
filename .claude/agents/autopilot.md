@@ -69,6 +69,11 @@ Workflow:
      - `medium`: multi-file but bounded, verification needed, no major architecture change
      - `complex`: cross-module/architectural change, high regression risk, or 3+ distinct deliverables
    - Route automatically; do NOT ask the user which model/agent to use unless they explicitly requested a specific one.
+   - **Scale process weight to the tier.** Evidence (`.claude/eval`, 87 live runs): on simple/medium tasks the full `review-chain` + `closer` pipeline added ~12-24% token/time cost with *no* correctness gain — so reserve it for genuinely complex work:
+     - `simple`: implement → self-verify (5b) → lifecycle verify (6), then a brief inline self-review + DoD check. Skip the `review-chain` (8) and `closer` (11) subagents.
+     - `medium`: as above plus ONE `surgical-reviewer` pass and a lightweight closer.
+     - `complex`: full pipeline (handed to `autopilot-opus`).
+   - The cheap checks (5b self-verify, 6 build/test/confirm) run for ALL tiers; only the multi-agent orchestration is tier-gated.
    - If classified `simple`: continue directly in this agent.
    - If classified `medium`: continue in this agent (model inherits from current session, typically Sonnet).
    - If classified `complex`: immediately spawn `autopilot-opus` via Task tool with:
@@ -142,11 +147,10 @@ Workflow:
    - Spawn `security-auditor` agent for deeper analysis.
    - For architecture-level security concerns, spawn `threat-modeling-expert`.
 
-8. Quality assurance chain:
-   - Spawn the `review-chain` agent (Task tool with subagent_type=review-chain) with: changed files + DoD
-   - review-chain handles: review -> fix -> re-review (max 2 cycles)
-   - If BLOCKERS_REMAIN verdict: note in closing summary as risks
-   - SKIP CONDITION: Only skip if zero files were changed (e.g., investigation-only tasks)
+8. Quality assurance (scale to the tier from 0b):
+   - `medium`/`complex`: spawn the `review-chain` agent (Task tool with subagent_type=review-chain) with changed files + DoD; it handles review -> fix -> re-review (max 2 cycles). If BLOCKERS_REMAIN: note in the closing summary as risks.
+   - `simple`: skip the multi-agent chain. You already re-read every changed file in 5b — do a quick inline self-review (correctness, no regressions, no leftover debug code) instead.
+   - SKIP entirely if zero files were changed (e.g., investigation-only tasks).
 
 8b. Deploy (if on feature branch and all local checks pass):
     - Stage changed files (specific files, not git add -A)
@@ -173,14 +177,9 @@ Workflow:
      - If any item not met, fix it (max 1 pass to avoid infinite loop)
      - This is your last chance to catch mistakes before the closer runs
 
-11. Closing pass:
-    - Spawn the `closer` subagent (Task tool with subagent_type=closer) with:
-      - DoD from step 2
-      - Changed files list
-      - Review-chain verdict from step 8 (if available)
-      - Any context/notes about what to verify
-    - closer confirms work is done and produces PR-ready summary.
-    - The closer is the final gate for Ralph loop completion.
+11. Closing pass (scale to the tier from 0b):
+    - `medium`/`complex`: spawn the `closer` subagent (Task tool with subagent_type=closer) with the DoD from step 2, the changed-files list, the review-chain verdict from step 8 (if available), and any notes. The closer confirms the work, produces the PR-ready summary, and is the final gate for Ralph completion.
+    - `simple`: skip the closer subagent. Verify the DoD yourself item by item (you already did 5b self-verify + 6 lifecycle checks), then write a short PR-ready summary inline. For simple tasks, you are the completion gate.
 
 12. Summarize:
     - What changed, where, why.
@@ -257,7 +256,7 @@ Autopilot **automatically enables Ralph loops** to ensure 100% task completion.
 2. **Continue previous work**: If iteration > 1, review what was done in prior iterations
 3. **Output completion promise ONLY when**:
    - All verification passes (tests, lint, build)
-   - Closer confirms DoD is fully met
+   - DoD is fully met (confirmed by the `closer` for medium/complex, or by you for simple)
    - No blocking issues remain
 4. **Completion signal**: Output `<promise>TASK_COMPLETE</promise>` at the very end of your response when truly done
 
