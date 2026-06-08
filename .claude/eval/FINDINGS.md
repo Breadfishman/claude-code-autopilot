@@ -75,6 +75,23 @@ light closer; `complex` keeps the full pipeline (via `autopilot-opus`). The
 cheap, valuable checks (re-read changed files, build/test/confirm) stay for all
 tiers.
 
+## Validation of the tiered default (A/B)
+
+After shipping the tier-gating, we A/B'd it directly — old always-full pipeline
+(`autopilot-full`) vs the new tiered default (`autopilot`) vs `minimal`, on the 3
+hard tasks × 3 reps, with real agents:
+
+| Mode | Pass | Avg tokens | vs full | Avg sec |
+|---|---|---|---|---|
+| `autopilot-full` (old) | 9/9 | 4128 | — | 32.2 |
+| **`autopilot` (tiered, new default)** | 9/9 | **3472** | **−16%** | 22.3 |
+| `minimal` | 9/9 | 3369 | −18% | 26.7 |
+
+**Result:** the tiered default is ~16% cheaper / ~31% faster than the old full
+pipeline at **identical (100%) correctness**, capturing nearly all of the
+full→minimal savings. The change does what it claims. *Still untested:* the
+complex-escalation path — needs a genuinely `complex` task.
+
 ## Reproduce / re-test (e.g. when a new model ships)
 
 ```bash
