@@ -1,3 +1,4 @@
-autopilot	autopilot.md	Full staged pipeline + mandatory verification (current kit)
+autopilot	autopilot.md	Tiered: process weight scales with complexity (current kit)
+autopilot-full	autopilot-full.md	Old always-full pipeline (pre-tiering A/B baseline)
 minimal	minimal.md	Karpathy minimalist: one strong model, surgical edits
 native	native.md	Platform-first: native goal-setting, lean scaffolding
