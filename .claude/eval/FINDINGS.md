@@ -92,6 +92,33 @@ pipeline at **identical (100%) correctness**, capturing nearly all of the
 full→minimal savings. The change does what it claims. *Still untested:* the
 complex-escalation path — needs a genuinely `complex` task.
 
+## Complex-tier probe — does it escalate? does the pipeline ever win?
+
+A genuinely multi-module task (`py-complex-orders`: 3 files, 4 interacting
+deliverables — discount+clamp, subtotal, tax-rounding, validation), full vs
+tiered vs minimal × 5 reps, real agents:
+
+| Mode | Pass | Avg tokens | Avg sec |
+|---|---|---|---|
+| `autopilot-full` | 5/5 | 6233 | 54.0 |
+| `autopilot` (tiered) | 5/5 | 5009 | 57.4 |
+| `minimal` | 5/5 | 5090 | 43.8 |
+
+1. **No correctness crossover — again.** minimal solved it 5/5; the forced full
+   pipeline cost +22% tokens for nothing. Across FOUR tiers (easy, hidden-test,
+   traps, complex multi-module) the pipeline has never beaten lean on correctness.
+2. **Escalation did not fire.** Tiered's cost (5009) sits at *minimal* (5090), not
+   full (6233): the model judged this 4-function task `medium` and stayed lean —
+   correctly (it passed). The "reserve the pipeline for complex" branch is
+   un-exercised here.
+
+**Honest limit of the method:** the regime where the pipeline might help (large /
+ambiguous / architectural) is exactly the one that resists deterministic fixtures.
+Every task we *can* fixture, the lean path wins. **Calibration note:** the model
+correctly overrode `autopilot.md`'s literal "3+ deliverables → complex" rule (this
+task has 4 and rightly stayed lean) — a future refinement could gate escalation on
+architectural/regression risk rather than deliverable count.
+
 ## Reproduce / re-test (e.g. when a new model ships)
 
 ```bash
