@@ -1,8 +1,10 @@
 # Mode: autopilot (tiered)
 
 Scale process weight to task complexity. First triage the task: **simple** (1–2
-files, clear existing pattern, low risk) / **medium** (bounded multi-file) /
-**complex** (cross-module, architectural, or 3+ distinct deliverables).
+files, clear existing pattern, low risk) / **medium** (bounded work — multi-file
+and/or several small deliverables, no architectural change) / **complex**
+(genuinely architectural — cross-module/cross-service or a new subsystem;
+deliverable count alone is not complexity).
 
 For EVERY tier: make the smallest change, then verify — re-read each changed file
 and run the relevant checks (tests/build). Do not declare done until they pass.

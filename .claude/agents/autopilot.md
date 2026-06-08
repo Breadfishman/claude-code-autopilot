@@ -66,8 +66,8 @@ Workflow:
 0b. **Automatic complexity router**:
    - Before implementation, create a short triage (1-5 bullets) and classify the task as:
      - `simple`: 1-2 files, clear existing pattern, low regression risk
-     - `medium`: multi-file but bounded, verification needed, no major architecture change
-     - `complex`: cross-module/architectural change, high regression risk, or 3+ distinct deliverables
+     - `medium`: bounded work -- multi-file and/or several small deliverables, but no architectural change or major regression risk
+     - `complex`: genuinely architectural -- cross-module/cross-service change, a new subsystem/abstraction, or high regression risk. (Deliverable *count* alone is not complexity: a bounded task with several small parts is `medium` -- see eval evidence in `.claude/eval/FINDINGS.md`.)
    - Route automatically; do NOT ask the user which model/agent to use unless they explicitly requested a specific one.
    - **Scale process weight to the tier.** Evidence (`.claude/eval`, 87 live runs): on simple/medium tasks the full `review-chain` + `closer` pipeline added ~12-24% token/time cost with *no* correctness gain — so reserve it for genuinely complex work:
      - `simple`: implement → self-verify (5b) → lifecycle verify (6), then a brief inline self-review + DoD check. Skip the `review-chain` (8) and `closer` (11) subagents.
