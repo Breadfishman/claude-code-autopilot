@@ -1,0 +1,42 @@
+name: ci
+
+# The kit imposes a build/test/confirm loop on target repos — this applies the
+# same loop to the kit itself: every bash entrypoint must parse, and the two
+# E2E suites (eval harness plumbing, wt worktree manager) must pass.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  shell-syntax:
+    name: Shell syntax (bash -n)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse every script with a bash shebang
+        run: |
+          set -uo pipefail
+          fail=0
+          while IFS= read -r -d '' f; do
+            head -c 64 "$f" | head -n 1 | grep -qE '^#!.*(bash|/sh)' || continue
+            if ! bash -n "$f" 2>/tmp/err; then
+              echo "SYNTAX FAIL: $f"; cat /tmp/err; fail=1
+            fi
+          done < <(find . -path ./.git -prune -o -type f -print0)
+          exit "$fail"
+
+  eval-harness:
+    name: Eval harness E2E (test_eval.sh)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: bash .claude/eval/test_eval.sh
+
+  worktree:
+    name: wt worktree manager E2E (test_worktree.sh)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash .claude/scripts/test_worktree.sh
