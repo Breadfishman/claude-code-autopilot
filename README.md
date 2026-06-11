@@ -50,6 +50,8 @@ make self-update                             # OpenClaw installs (same thing)
 
 Re-running the bare Quick Install line from a different directory does **not** update an existing `/opt/openclaw-home` — without `--dest`/`--with-openclaw` it installs into the current directory (the installer now warns about this).
 
+Running a fork? Set `CCA_CANONICAL_REPO=<owner>/<repo>` in the install root's `.env` (see `.env.example`) so the installer command suggested by `self-update` on manifest-less installs points at your fork. The environment variable of the same name takes precedence over `.env`.
+
 ### OpenClaw Docker Quickstart
 
 For a new user who wants Docker-only OpenClaw with access to repos under `/opt/repos`:

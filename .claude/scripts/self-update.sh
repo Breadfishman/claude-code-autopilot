@@ -10,12 +10,17 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+[[ -f "$SCRIPT_DIR/lib.sh" ]] || { echo "self-update: missing $SCRIPT_DIR/lib.sh (incomplete install?)" >&2; exit 1; }
+# shellcheck source=lib.sh
+. "$SCRIPT_DIR/lib.sh"
+
 ROOT="${1:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
 MANIFEST="$ROOT/.claude/install.manifest"
 
 # Upstream repo used to suggest a runnable installer command when no manifest
-# exists. Forks: override via CCA_CANONICAL_REPO or pass your own --repo.
-CANONICAL_REPO="${CCA_CANONICAL_REPO:-NorkzYT/claude-code-autopilot}"
+# exists. Forks: set CCA_CANONICAL_REPO in the install root's .env (persists
+# across updates) or export it; precedence: env var > .env > default.
+CANONICAL_REPO="$(env_resolve CCA_CANONICAL_REPO "$ROOT/.env" "NorkzYT/claude-code-autopilot")"
 
 # Print a copy-pasteable installer command inferred from this install root:
 # real repo, real dest, and --with-openclaw when the OpenClaw assets are
