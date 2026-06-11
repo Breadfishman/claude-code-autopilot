@@ -11,6 +11,8 @@ EVAL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MODES_TSV="$EVAL_DIR/modes/modes.tsv"
 TASKS_DIR="$EVAL_DIR/tasks"
 RUNNERS_DIR="$EVAL_DIR/runners"
+# shellcheck source=lib.sh
+. "$EVAL_DIR/lib.sh"
 
 RUNNER="mock-solve"; MODES=""; TASKS=""; OUT=""; QUIET=0; REPS=1; AGENTS=0
 
@@ -45,8 +47,15 @@ done
 
 RUNNER_SH="$RUNNERS_DIR/$RUNNER.sh"
 [ -f "$RUNNER_SH" ] || { echo "run-eval: no such runner '$RUNNER' ($RUNNER_SH)" >&2; exit 1; }
+[[ "$REPS" =~ ^[1-9][0-9]*$ ]] || { echo "run-eval: --reps must be a positive integer (got '$REPS')" >&2; exit 1; }
 [ -z "$MODES" ] && MODES="$(awk -F'\t' 'NF{print $1}' "$MODES_TSV")"
 [ -z "$TASKS" ] && TASKS="$(for d in "$TASKS_DIR"/*/; do [ -d "$d" ] && basename "$d"; done)"
+
+# Deps preflight: drop tasks whose declared host requirements are unmet (loudly),
+# so a missing interpreter is reported as a skip — never as agent failures.
+# shellcheck disable=SC2086
+TASKS="$(eval_filter_runnable "$TASKS_DIR" $TASKS)"
+[ -n "$TASKS" ] || { echo "run-eval: no runnable tasks on this host (see SKIP lines above)" >&2; exit 1; }
 
 if [ -z "$OUT" ]; then
   mkdir -p "$EVAL_DIR/results"

@@ -19,7 +19,8 @@ else
   out="$("${runner[@]}" 2>/dev/null || true)"
 fi
 
-tokens="$(printf '%s' "$out" | python3 -c '
+if command -v python3 >/dev/null 2>&1; then
+  tokens="$(printf '%s' "$out" | python3 -c '
 import sys, json
 try:
     d = json.load(sys.stdin); u = d.get("usage", {}) or {}
@@ -27,4 +28,7 @@ try:
 except Exception:
     print(0)
 ' 2>/dev/null || echo 0)"
+else
+  tokens=NA   # no python3 on this host — record "unmeasured", not a fake 0
+fi
 printf 'tokens=%s\n' "$tokens" >"$metrics"
