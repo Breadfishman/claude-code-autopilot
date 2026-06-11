@@ -36,7 +36,7 @@ Work directly. No escalation needed.
 Work directly with the full `autopilot-workflow` pipeline. Extra care on verification.
 
 - 3-4 files affected
-- Bounded scope (clear start and end)
+- Bounded scope (clear start and end) — several small deliverables are still Medium when there is no architectural change (deliverable count alone is not complexity; see `.claude/eval/FINDINGS.md`)
 - Moderate regression risk
 - Examples: new endpoint with tests, refactor within one module, feature following existing patterns
 
@@ -45,8 +45,7 @@ Work directly with the full `autopilot-workflow` pipeline. Extra care on verific
 Delegate to the Claude autopilot-opus pipeline for higher reasoning capability.
 
 - 4+ files across different modules/packages
-- Requires architectural decisions (new patterns, service boundaries)
-- 3+ distinct deliverables
+- Requires architectural decisions (new patterns, service boundaries, a new subsystem/abstraction)
 - High regression risk (core business logic, auth, data layer)
 - Benefits from specialist review (security, performance, type system)
 
@@ -65,7 +64,7 @@ If the workspace has a Claude Code installation, this invokes the `autopilot-opu
 | Files changed | 1-2 | 3-4 | 4+ |
 | Modules touched | 1 | 1-2 | 3+ |
 | Pattern | Existing | Existing | New/Architectural |
-| Deliverables | 1 | 1-2 | 3+ |
+| Deliverables | 1 | several (bounded) | any, if architectural |
 | Regression risk | Low | Medium | High |
 | **Action** | Direct | Direct + full pipeline | Escalate to Opus |
 

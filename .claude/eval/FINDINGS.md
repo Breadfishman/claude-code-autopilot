@@ -70,8 +70,9 @@ Make a **lean path the default** and **reserve the full pipeline for `complex`
 work** (large/architectural/high-risk). Implemented in
 `.claude/agents/autopilot.md`: the `simple` tier now does implement +
 self-verify + lifecycle-verify and a brief inline review/close (skipping the
-`review-chain` and `closer` subagents); `medium` gets a single reviewer + a
-light closer; `complex` keeps the full pipeline (via `autopilot-opus`). The
+`review-chain` and `closer` subagents); `medium` gets a single
+`surgical-reviewer` pass + an inline close; `complex` keeps the full pipeline
+(via `autopilot-opus`). The
 cheap, valuable checks (re-read changed files, build/test/confirm) stay for all
 tiers.
 
