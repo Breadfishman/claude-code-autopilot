@@ -23,7 +23,7 @@ This means local developer workflows only. It does not mean staging or productio
 - OpenClaw-managed browser for CDP and local UI checks
 - Generated root `TOOLS.md` with detected build/test/local-run/confirm commands
 - Generated root `HEARTBEAT.md` and `PROJECT.md` (via `analyze_repo.sh`, `--deep` for `PROJECT.md`)
-- Sonnet-first routing and explicit Opus escalation path
+- Opus-first routing with Sonnet downshift for simple tasks
 - Commit trailer blocking (`Co-Authored-By`)
 - Real local workflow wrapper script (`.claude/scripts/openclaw-local-workflow.sh`)
 - Real local workflow wrapper script for build/test/confirm automation

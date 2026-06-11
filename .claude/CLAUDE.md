@@ -102,14 +102,14 @@ See `.claude/docs/ralph-pattern.md` for the full reference (decision matrix, PRD
 
 ## Cost-Optimized Model Routing
 
-- **Default model:** Sonnet for planning, discovery, and most implementation tasks.
+- **Default model:** Opus for planning, triage, and implementation (`.claude/settings.json`). The lean process tiers (see `.claude/eval/FINDINGS.md`) fund the stronger model: spend on reasoning, not pipeline overhead.
 - **Plan first:** Start with a short plan and complexity triage before doing work.
-- **Escalate to Opus + autopilot-opus only when complex:** multi-file architectural changes, high regression risk, or specialist review needs.
+- **Downshift simple tasks to Sonnet:** mechanical 1-3 file changes that follow an existing pattern (docs, config tweaks, small bug fixes) don't need Opus.
 - **Keep browser/vision usage explicit:** only use browser verification when UI behavior changed.
 
-This gets most of the quality benefit while protecting weekly usage.
+This buys the quality where it matters while protecting weekly usage on mechanical work.
 
-For complex multi-file architectural tasks, use the **autopilot-opus** subagent:
+If a session is running on a smaller model (downshifted or launched that way), escalate complex multi-file architectural work to the **autopilot-opus** subagent:
 ```
 Use the autopilot-opus subagent (Task tool with subagent_type=autopilot-opus) for this task
 ```

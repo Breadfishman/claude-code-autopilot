@@ -21,7 +21,7 @@ OpenClaw and CrewAI are intentionally split into separate compose files so users
 - Host repos under `/opt/repos` (or set `HOST_REPOS_DIR`)
 - Host OpenClaw state under `~/.openclaw` by default
 - Optional: copy `.env.example` to `.env` for git identity, auth tokens, and port overrides
-- For `anthropic/claude-sonnet-4-6`, keep `OPENCLAW_THINKING_DEFAULT=high` unless you intentionally want a lower reasoning budget
+- For Claude primaries (default `claude-max-proxy/claude-opus`), keep `OPENCLAW_THINKING_DEFAULT=high` unless you intentionally want a lower reasoning budget
 
 ## OpenClaw Stack (Gateway + Browser Viewer)
 

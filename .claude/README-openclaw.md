@@ -25,10 +25,10 @@ Authenticate Anthropic (Claude Max / token):
 make auth-anthropic     # interactive paste-token prompt
 ```
 
-Set model (example: Sonnet-first):
+Set model (example: Opus-first):
 
 ```bash
-make config-set KEY=models.default VALUE=anthropic/claude-sonnet-4-6
+make config-set KEY=models.default VALUE=claude-max-proxy/claude-opus
 make restart
 ```
 

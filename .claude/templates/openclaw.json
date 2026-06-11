@@ -11,9 +11,9 @@
         "ttl": "30m"
       },
       "model": {
-        "primary": "anthropic/claude-sonnet-4-6",
+        "primary": "anthropic/claude-opus-4-8",
         "fallbacks": [
-          "anthropic/claude-opus-4-7",
+          "anthropic/claude-sonnet-4-6",
           "openai-codex/gpt-5.3-codex"
         ]
       },

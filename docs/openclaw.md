@@ -35,7 +35,7 @@ Important:
 
 - Default repo mount is `${HOST_REPOS_DIR:-/opt/repos}` on the host to `/opt/repos` in the container.
 - OpenClaw is not installed on the host in the default flow. The `openclaw` command is a host wrapper into Docker.
-- `OPENCLAW_THINKING_DEFAULT=high` is the recommended default when `OPENCLAW_MODEL_PRIMARY=anthropic/claude-sonnet-4-6`.
+- `OPENCLAW_THINKING_DEFAULT=high` is the recommended default when `OPENCLAW_MODEL_PRIMARY=claude-max-proxy/claude-opus` (the stack default).
 - Use `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` in `.env` for direct API-key auth. Use in-container auth commands for subscription-backed auth.
 - Host OpenClaw state automatically defaults to `~/.openclaw`, bind-mounted into the container. Only set `OPENCLAW_HOST_STATE_DIR` if you want a non-default path.
 - Host services are reachable from the container at `http://host.docker.internal:<port>`. For example, a host dev server on port `8080` should be accessed as `http://host.docker.internal:8080` from OpenClaw.

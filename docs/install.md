@@ -46,7 +46,7 @@ The OpenClaw Docker stack uses `.env.example` as the canonical reference. Copy i
 - `HOST_REPOS_DIR`
 - gateway and viewer ports
 - git author and committer identity
-- `OPENCLAW_MODEL_PRIMARY=anthropic/claude-sonnet-4-6`
+- `OPENCLAW_MODEL_PRIMARY=claude-max-proxy/claude-opus`
 - `OPENCLAW_THINKING_DEFAULT=high`
 - `OPENCLAW_ANTHROPIC_SETUP_TOKEN`
 - `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`

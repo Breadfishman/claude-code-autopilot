@@ -37,7 +37,7 @@ class CodeExecutorTool(BaseTool):
 
     def _run(self, prompt: str, workspace: str = "") -> str:
         proxy_url = os.getenv("CLAUDE_MAX_PROXY_URL", "http://localhost:3456").rstrip("/")
-        model = os.getenv("ENGINEERING_CODE_MODEL", "claude-sonnet-4-6")
+        model = os.getenv("ENGINEERING_CODE_MODEL", "claude-opus-4-8")
 
         full_prompt = prompt
         if workspace:

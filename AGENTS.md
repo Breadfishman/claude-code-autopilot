@@ -82,8 +82,9 @@ Do not mark tasks complete after code-only changes.
 
 ## Cost-Optimized Routing
 
-- Claude/OpenClaw: use Sonnet first for plan + direct execution.
-- Escalate to Opus/autopilot only for complex multi-file/architectural tasks.
+- Claude/OpenClaw: Opus first for plan + direct execution (kit default in `.claude/settings.json`).
+- Downshift simple, pattern-following tasks (1-2 files, low risk) to Sonnet to protect weekly usage.
+- If a session runs on a smaller model, escalate complex multi-file/architectural tasks to Opus/autopilot.
 - Codex: follow the same plan-first/direct-first policy and keep browser verification explicit.
 
 ## Shared Skills and Guardrails

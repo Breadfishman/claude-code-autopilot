@@ -231,7 +231,7 @@ ENGINEERING_MODEL=gpt-5.3-codex
 
 # claude-max-proxy for coding execution
 CLAUDE_MAX_PROXY_URL=http://localhost:3456
-ENGINEERING_CODE_MODEL=claude-sonnet-4-6
+ENGINEERING_CODE_MODEL=claude-opus-4-8
 ```
 
 ## Run Commands

@@ -1,11 +1,11 @@
 ---
 name: model-router
-description: Complexity-based model escalation for OpenClaw agents. Triage tasks into Simple/Medium/Complex and route to the appropriate model (Sonnet vs Opus).
+description: Complexity-based model routing for OpenClaw agents. Opus is the default; triage tasks into Simple/Medium/Complex to downshift simple work to Sonnet and to pick the right process weight.
 ---
 
-# Model Router — Complexity-Based Escalation
+# Model Router — Complexity-Based Routing
 
-Use this skill at the start of every coding task to decide whether to work directly or escalate to a more capable model.
+Use this skill at the start of every coding task. The kit defaults to **Opus** (`.claude/settings.json`): the lean process tiers (see `.claude/eval/FINDINGS.md`) fund the stronger model, so routing means deciding when to **downshift** simple work to Sonnet — not when to beg for Opus.
 
 ## Triage Template
 
@@ -22,34 +22,34 @@ Before starting work, classify the task:
 
 ## Classification Rules
 
-### Simple (Stay on current model — typically Sonnet)
+### Simple (Downshift to Sonnet)
 
-Work directly. No escalation needed.
+Mechanical work that doesn't need Opus-level reasoning. Run it on Sonnet (or stay put if the session is already on a smaller model) and work directly.
 
 - 1-2 files affected
 - Follows an existing pattern in the codebase
 - Low regression risk
 - Examples: bug fix, config change, docs update, test addition, styling tweak
 
-### Medium (Stay on Sonnet, use full autopilot-workflow)
+### Medium (Stay on Opus, single review pass)
 
-Work directly with the full `autopilot-workflow` pipeline. Extra care on verification.
+Work directly on the default model with one focused review pass. Extra care on verification.
 
 - 3-4 files affected
 - Bounded scope (clear start and end) — several small deliverables are still Medium when there is no architectural change (deliverable count alone is not complexity; see `.claude/eval/FINDINGS.md`)
 - Moderate regression risk
 - Examples: new endpoint with tests, refactor within one module, feature following existing patterns
 
-### Complex (Escalate to Opus)
+### Complex (Stay on Opus, full pipeline)
 
-Delegate to the Claude autopilot-opus pipeline for higher reasoning capability.
+Run the full autopilot pipeline for higher assurance. If the session is currently on a smaller model (downshifted or launched that way), escalate to the Opus pipeline.
 
 - 4+ files across different modules/packages
 - Requires architectural decisions (new patterns, service boundaries, a new subsystem/abstraction)
 - High regression risk (core business logic, auth, data layer)
 - Benefits from specialist review (security, performance, type system)
 
-**How to escalate in OpenClaw:**
+**How to escalate from a smaller model in OpenClaw:**
 
 ```
 Use the autopilot-opus subagent (Task tool with subagent_type=autopilot-opus) for this task: <description>
@@ -66,17 +66,17 @@ If the workspace has a Claude Code installation, this invokes the `autopilot-opu
 | Pattern | Existing | Existing | New/Architectural |
 | Deliverables | 1 | several (bounded) | any, if architectural |
 | Regression risk | Low | Medium | High |
-| **Action** | Direct | Direct + full pipeline | Escalate to Opus |
+| **Model** | Sonnet (downshift) | Opus | Opus |
+| **Process** | Direct, inline verify | Direct + one review pass | Full pipeline |
 
 ## Common Mistakes
 
-- **Over-escalating:** A 3-file change following an existing pattern is Medium, not Complex. Don't escalate just because the task sounds hard.
-- **Under-escalating:** A "simple" task that touches auth + database + API + tests is Complex. Count the distinct modules, not just the files.
+- **Forgetting to downshift:** A docs tweak or one-file pattern-following fix on Opus burns weekly usage for no quality gain. Simple work belongs on Sonnet.
+- **Downshifting complex work:** A "simple" task that touches auth + database + API + tests is Complex. Count the distinct modules, not just the files — keep it on Opus.
 - **Skipping triage:** Always write the triage template, even for tasks that seem obvious. It takes 10 seconds and prevents wrong-model execution.
 
 ## Cost Awareness
 
-- Opus costs ~5x more tokens than Sonnet
-- Most tasks (70-80%) should stay on Sonnet
-- Escalation should be the exception, not the default
-- When in doubt, start on Sonnet — you can always escalate mid-task if complexity is higher than expected
+- Opus costs ~5x more tokens than Sonnet, so downshifting the mechanical 40-60% of tasks is what keeps the Opus default affordable.
+- The eval evidence (`.claude/eval/FINDINGS.md`) showed process overhead, not model strength, was the wasted spend — pay for reasoning, trim ceremony.
+- When in doubt, stay on Opus: a wrong answer costs more than the token delta. Downshift only when the task is clearly mechanical.
