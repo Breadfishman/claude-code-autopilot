@@ -40,14 +40,12 @@ tmp
 .codex-home/
 .agents/
 
-# >>> claude-code-autopilot local agent state >>>
+# Local agent/workspace runtime state (OpenClaw, CrewAI, agent identity files).
+# NOTE: this is the kit's SOURCE repo — .claude/ and AGENTS.md are tracked
+# content here and must never be ignored. The broader installer-appended block
+# (which does ignore them) is for target repos only; install.sh skips it here.
 .crewai/
-.claude/
-.codex/
-.codex-home/
-.agents/
 .openclaw/
-AGENTS.md
 SOUL.md
 USER.md
 IDENTITY.md
@@ -57,7 +55,6 @@ BOOTSTRAP.md
 MEMORY.md
 memory/
 PROJECT.md
-# <<< claude-code-autopilot local agent state <<<
 
 # Eval harness run outputs (keep the dir, ignore generated results)
 .claude/eval/results/*

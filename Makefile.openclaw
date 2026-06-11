@@ -1,4 +1,4 @@
-.PHONY: help update build rebuild rebuild-proxy start start-host stop restart restart-host logs logs-viewer status shell clean \
+.PHONY: help update self-update build rebuild rebuild-proxy start start-host stop restart restart-host logs logs-viewer status shell clean \
        add-origins verify-vnc config-get approve-device \
        auth-anthropic auth-openai auth-gh auth-claude-proxy models dashboard-url config-set doctor \
        add-agent update-agent setup-discord setup-discord-scale setup-workspace-anchors \
@@ -29,6 +29,8 @@ help:
 	@echo "===================================="
 	@echo ""
 	@echo "  make update        - Pull latest image, rebuild gateway + proxy, and restart"
+	@echo "  make self-update   - Refresh the autopilot kit itself (.claude/ + assets)"
+	@echo "                       using the flags recorded at install time"
 	@echo "  make build         - Rebuild the gateway image"
 	@echo "  make rebuild       - Force rebuild (no cache) and recreate container"
 	@echo "  make rebuild-proxy - Force rebuild claude-max-proxy and recreate container"
@@ -108,6 +110,12 @@ help:
 	@echo "  make think LEVEL=high    - Set thinking budget for claude-max-proxy"
 	@echo "                             (off | low | medium | high | xhigh | max)"
 	@echo ""
+
+# Refresh the autopilot kit (.claude/ + OpenClaw assets) from its source repo,
+# replaying the install flags recorded in .claude/install.manifest.
+# Complements 'make update', which updates the OpenClaw Docker stack.
+self-update:
+	@bash .claude/scripts/self-update.sh
 
 # Update OpenClaw: pull latest base image, rebuild, restart, run internal update
 update:

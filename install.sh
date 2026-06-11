@@ -191,9 +191,31 @@ if [[ -z "${REPO}" ]]; then
   exit 1
 fi
 
+# Default OpenClaw workspace location (env-overridable for tests/custom hosts).
+OPENCLAW_HOME_DIR="${OPENCLAW_HOME_DIR:-/opt/openclaw-home}"
+
 if [[ "$INSTALL_OPENCLAW" == "1" && "$DEST_EXPLICIT" != "1" ]]; then
-  DEST="/opt/openclaw-home"
+  DEST="$OPENCLAW_HOME_DIR"
 fi
+
+# Guard the classic footgun: a bare re-run (no --dest / --with-openclaw)
+# installs into the CURRENT directory and silently leaves an existing
+# OpenClaw-home install stale.
+warn_if_probably_wrong_dest() {
+  [[ "$DEST_EXPLICIT" == "1" || "$INSTALL_OPENCLAW" == "1" ]] && return 0
+  [[ -d "$OPENCLAW_HOME_DIR/.claude" ]] || return 0
+  [[ "$(cd "$DEST" 2>/dev/null && pwd)" == "$OPENCLAW_HOME_DIR" ]] && return 0
+  echo "=============================================================="
+  echo "  WARNING: existing install found at $OPENCLAW_HOME_DIR/.claude"
+  echo "  but this run installs into: $(cd "$DEST" 2>/dev/null && pwd || echo "$DEST")"
+  echo "  (no --dest or --with-openclaw given). That install will NOT"
+  echo "  be updated. To refresh it instead, either:"
+  echo "    - re-run with --with-openclaw (dest defaults to $OPENCLAW_HOME_DIR)"
+  echo "    - re-run with --dest $OPENCLAW_HOME_DIR"
+  echo "    - or run: make -C $OPENCLAW_HOME_DIR self-update"
+  echo "=============================================================="
+}
+warn_if_probably_wrong_dest
 
 ensure_destination_dir() {
   local target_dir="$1"
@@ -301,6 +323,14 @@ ensure_local_agent_gitignore() {
   local gitignore_file="$1/.gitignore"
   local start_marker="# >>> claude-code-autopilot local agent state >>>"
   local end_marker="# <<< claude-code-autopilot local agent state <<<"
+
+  # Never self-ignore the kit's own source checkout: there .claude/ and
+  # AGENTS.md are tracked content, not local agent state. The source repo is
+  # identified by carrying this very installer (which contains the marker).
+  if [[ -f "$1/install.sh" ]] && grep -qF "$start_marker" "$1/install.sh" 2>/dev/null; then
+    echo "  Skipping local agent state ignore block: $1 is the kit source repo"
+    return 0
+  fi
 
   if [[ -f "$gitignore_file" ]] && grep -qF "$start_marker" "$gitignore_file" 2>/dev/null; then
     echo "  Local agent state ignore block already present in $gitignore_file"
@@ -553,6 +583,26 @@ ensure_local_agent_gitignore "$DEST_ABS"
 # Merge recommended workspace VS Code settings without clobbering existing settings.
 merge_vscode_settings "$SRC_VSCODE_SETTINGS" "$DEST_ABS"
 
+# Record how this install was performed so it can be repeated verbatim by
+# `.claude/scripts/self-update.sh` (or `make self-update` with OpenClaw).
+write_install_manifest() {
+  local manifest="$DEST_CLAUDE/install.manifest"
+  {
+    echo "# claude-code-autopilot install manifest (shell-sourceable)."
+    echo "# Consumed by .claude/scripts/self-update.sh — do not edit casually."
+    echo "CCA_REPO='${REPO}'"
+    echo "CCA_REF='${REF}'"
+    echo "CCA_DEST='${DEST_ABS}'"
+    echo "CCA_BOOTSTRAP_LINUX='${BOOTSTRAP_LINUX}'"
+    echo "CCA_NO_EXTRAS='${NO_EXTRAS}'"
+    echo "CCA_WITH_OPENCLAW='${INSTALL_OPENCLAW}'"
+    echo "CCA_WITH_CREWAI='${INSTALL_CREWAI}'"
+    echo "CCA_INSTALLED_AT='$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date)'"
+  } >"$manifest"
+  echo "  Wrote install manifest: $manifest"
+}
+write_install_manifest
+
 # --- Fix permissions/ownership so Claude hooks can write logs ---
 TARGET_USER="${SUDO_USER:-$(id -un)}"
 TARGET_GROUP="$(id -gn "$TARGET_USER" 2>/dev/null || true)"
@@ -783,9 +833,9 @@ mkdir -p "$USER_CLAUDE_DIR"
 
 cat > "$USER_CLAUDE_MD" << 'AUTOPILOT_EOF'
 Cost-optimized routing policy:
-- Start with a short plan/triage on the current model.
-- Work directly for small tasks (1-3 files, existing patterns).
-- Escalate to the autopilot-opus subagent (Task tool with subagent_type=autopilot-opus) only for complex multi-file or architectural tasks.
+- Default to Opus; start every task with a short plan/triage.
+- Downshift simple mechanical tasks (1-3 files, existing patterns) to Sonnet and work directly.
+- If the session is on a smaller model, escalate complex multi-file or architectural tasks to the autopilot-opus subagent (Task tool with subagent_type=autopilot-opus).
 - Run build/test before completion and avoid Co-Authored-By commit trailers.
 AUTOPILOT_EOF
 
@@ -808,7 +858,7 @@ WT_COMMENT="# Worktree manager for isolated parallel agent sessions"
 
 # Ensure local wrappers + worktree tooling are executable.
 chmod +x "${DEST_ABS}/.claude/bin/codex-local" "${DEST_ABS}/.claude/bin/wt" 2>/dev/null || true
-chmod +x "${DEST_ABS}/.claude/scripts/worktree-bootstrap.sh" "${DEST_ABS}/.claude/scripts/worktree-teardown.sh" 2>/dev/null || true
+chmod +x "${DEST_ABS}/.claude/scripts/worktree-bootstrap.sh" "${DEST_ABS}/.claude/scripts/worktree-teardown.sh" "${DEST_ABS}/.claude/scripts/self-update.sh" 2>/dev/null || true
 
 for rcfile in "$USER_HOME/.bashrc" "$USER_HOME/.zshrc"; do
   if [[ -f "$rcfile" ]] || [[ "$(basename "$rcfile")" == ".bashrc" ]]; then
