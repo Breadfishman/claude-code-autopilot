@@ -2,8 +2,8 @@
 
 Measures the kit's **modes** against a corpus of tasks with objective pass/fail
 criteria, so "which workflow is better?" becomes a scoreboard instead of an
-opinion. This is the arbiter for the modernization decisions (see
-`.claude/MODERNIZATION_PLAN.md` §2).
+opinion. This is the arbiter for the kit's workflow decisions — recorded
+results live in `FINDINGS.md`.
 
 ## Run it
 
@@ -33,8 +33,12 @@ workdir, then `tasks/<id>/verify.sh` runs there (`exit 0` = pass). Time and (rea
 runner) token usage are recorded. Fixtures are never mutated.
 
 > **Isolation:** synthetic tasks use temp-dir isolation. For a real-repo corpus
-> (e.g. `numu-insight-dash-staging`), swap per-cell setup to a `wt` worktree off a
+> (e.g. your application repo), swap per-cell setup to a `wt` worktree off a
 > base commit — see `.claude/docs/worktrees.md`.
+>
+> **Host deps:** a task may declare required commands in a `requires` file
+> (one per line — most tasks here need `python3`). Tasks with unmet requirements
+> are skipped loudly, never recorded as failures (`lib.sh`).
 
 ## Pieces
 
@@ -56,6 +60,7 @@ tasks/<id>/
   seed/...           # the broken starting files (copied into the workdir)
   verify.sh          # runs in the workdir; exit 0 = pass; keep it dependency-light
   solution/...       # reference fix (mock-solve copies this in; real runs never see it)
+  requires           # optional: commands verify.sh needs (e.g. python3), one per line
 ```
 
 ## Add a mode

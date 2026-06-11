@@ -58,3 +58,7 @@ MEMORY.md
 memory/
 PROJECT.md
 # <<< claude-code-autopilot local agent state <<<
+
+# Eval harness run outputs (keep the dir, ignore generated results)
+.claude/eval/results/*
+!.claude/eval/results/.gitkeep
