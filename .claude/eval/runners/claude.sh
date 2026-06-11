@@ -4,6 +4,8 @@
 # harness, so Claude Code picks it up. Gated on the claude CLI being installed.
 # args: <workdir> <task_dir> <metrics_file>
 set -euo pipefail
+# shellcheck source=../lib.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/lib.sh"
 workdir="$1"; task_dir="$2"; metrics="${3:-/dev/null}"
 command -v claude >/dev/null 2>&1 || { echo "[claude-runner] claude CLI not found" >&2; exit 2; }
 
@@ -19,8 +21,8 @@ else
   out="$("${runner[@]}" 2>/dev/null || true)"
 fi
 
-if command -v python3 >/dev/null 2>&1; then
-  tokens="$(printf '%s' "$out" | python3 -c '
+if eval_dep_met "uv|python3"; then
+  tokens="$(printf '%s' "$out" | eval_python -c '
 import sys, json
 try:
     d = json.load(sys.stdin); u = d.get("usage", {}) or {}
@@ -29,6 +31,6 @@ except Exception:
     print(0)
 ' 2>/dev/null || echo 0)"
 else
-  tokens=NA   # no python3 on this host — record "unmeasured", not a fake 0
+  tokens=NA   # no Python toolchain on this host — record "unmeasured", not a fake 0
 fi
 printf 'tokens=%s\n' "$tokens" >"$metrics"

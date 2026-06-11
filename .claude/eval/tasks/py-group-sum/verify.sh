@@ -1,3 +1,4 @@
 #!/usr/bin/env bash
 set -e
-python3 test_groupsum.py
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/lib.sh"
+eval_python test_groupsum.py

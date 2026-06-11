@@ -44,9 +44,16 @@ if eval_task_runnable "$EVAL_DIR/tasks/py-evenodd"; then
   assert "py-evenodd passes under solve"       '[ "$(cell autopilot py-evenodd "$SOLVE")" = "1" ]'
   assert "py-evenodd fails under noop"         '[ "$(cell autopilot py-evenodd "$NOOP")" = "0" ]'
 else
-  skip "py-evenodd cell assertions" "python3 not on this host"
+  skip "py-evenodd cell assertions" "no uv or python3 on this host"
 fi
 assert "bash-slugify passes under solve"     '[ "$(cell minimal bash-slugify "$SOLVE")" = "1" ]'
+
+# requires alternatives (`a|b` = any-of) — the syntax the py tasks rely on for uv|python3.
+FAKE_TASK="$TMP/fake-task"; mkdir -p "$FAKE_TASK"
+printf 'definitely-missing-xyz|bash\n' >"$FAKE_TASK/requires"
+assert "requires alt: any-present is runnable" 'eval_task_runnable "$FAKE_TASK"'
+printf 'definitely-missing-xyz|also-missing-abc\n' >"$FAKE_TASK/requires"
+assert "requires alt: all-missing is skipped"  '! eval_task_runnable "$FAKE_TASK"'
 assert "all modes appear in results"         '[ "$(tail -n +2 "$SOLVE" | cut -f1 | sort -u | wc -l | tr -d " ")" -eq "$NMODES" ]'
 assert "fixtures NOT mutated by a run"       '[ "$(seed_sum)" = "$BEFORE" ]'
 assert "unknown runner errors out"           '! bash "$RUN" --runner nope --out "$TMP/x.tsv" --quiet'

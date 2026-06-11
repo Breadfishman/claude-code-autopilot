@@ -36,9 +36,12 @@ runner) token usage are recorded. Fixtures are never mutated.
 > (e.g. your application repo), swap per-cell setup to a `wt` worktree off a
 > base commit — see `.claude/docs/worktrees.md`.
 >
-> **Host deps:** a task may declare required commands in a `requires` file
-> (one per line — most tasks here need `python3`). Tasks with unmet requirements
-> are skipped loudly, never recorded as failures (`lib.sh`).
+> **Host deps:** a task may declare required commands in a `requires` file —
+> one per line; `a|b` means any-of (the py tasks declare `uv|python3`). Tasks
+> with unmet requirements are skipped loudly, never recorded as failures.
+> Python tasks run through `eval_python` in `lib.sh`, which prefers
+> [uv](https://docs.astral.sh/uv/) (provisions an interpreter on demand) and
+> falls back to system `python3`.
 
 ## Pieces
 
@@ -60,7 +63,7 @@ tasks/<id>/
   seed/...           # the broken starting files (copied into the workdir)
   verify.sh          # runs in the workdir; exit 0 = pass; keep it dependency-light
   solution/...       # reference fix (mock-solve copies this in; real runs never see it)
-  requires           # optional: commands verify.sh needs (e.g. python3), one per line
+  requires           # optional: commands verify.sh needs, one per line (`a|b` = any-of)
 ```
 
 ## Add a mode

@@ -1,3 +1,4 @@
 #!/usr/bin/env bash
 set -e
-python3 test_amount.py
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/lib.sh"
+eval_python test_amount.py
