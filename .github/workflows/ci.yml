@@ -40,3 +40,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: bash .claude/scripts/test_worktree.sh
+
+  self-update:
+    name: self-update E2E (test_self_update.sh)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash .claude/scripts/test_self_update.sh

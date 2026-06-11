@@ -29,6 +29,10 @@ Options:
   --no-extras               Skip installing extras (wshobson agents/commands/skills)
   --with-openclaw           Install and configure OpenClaw integration
   --with-crewai             Install and configure CrewAI integration
+
+Example (upstream repo, full OpenClaw stack at /opt/openclaw-home):
+  curl -fsSL https://raw.githubusercontent.com/NorkzYT/claude-code-autopilot/main/install.sh \
+    | bash -s -- --repo NorkzYT/claude-code-autopilot --ref main --force --with-openclaw
 EOF
 }
 

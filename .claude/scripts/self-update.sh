@@ -13,10 +13,24 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="${1:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
 MANIFEST="$ROOT/.claude/install.manifest"
 
+# Upstream repo used to suggest a runnable installer command when no manifest
+# exists. Forks: override via CCA_CANONICAL_REPO or pass your own --repo.
+CANONICAL_REPO="${CCA_CANONICAL_REPO:-NorkzYT/claude-code-autopilot}"
+
+# Print a copy-pasteable installer command inferred from this install root:
+# real repo, real dest, and --with-openclaw when the OpenClaw assets are
+# present (docker/openclaw is only installed by that flag).
+suggest_install_command() {
+  local flags="--repo $CANONICAL_REPO --ref main --dest $ROOT --force"
+  [[ -d "$ROOT/docker/openclaw" ]] && flags+=" --with-openclaw"
+  echo "curl -fsSL https://raw.githubusercontent.com/${CANONICAL_REPO}/main/install.sh | bash -s -- ${flags}"
+}
+
 if [[ ! -f "$MANIFEST" ]]; then
   echo "self-update: no manifest at $MANIFEST" >&2
-  echo "self-update: re-run the curl installer once (it now records one), e.g.:" >&2
-  echo "  curl -fsSL https://raw.githubusercontent.com/<owner>/<repo>/main/install.sh | bash -s -- --repo <owner>/<repo> --force ..." >&2
+  echo "self-update: this install predates manifest recording. Re-run the installer" >&2
+  echo "self-update: once (it records a manifest, so future updates are one command):" >&2
+  echo "  $(suggest_install_command)" >&2
   exit 1
 fi
 
