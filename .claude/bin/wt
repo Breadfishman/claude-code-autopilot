@@ -62,6 +62,20 @@ free_offset() {
   printf '%s' "$off"
 }
 
+# create_worktree <path> <branch> [base] — reattach if the branch already exists
+# (e.g. after `wt rm --keep-branch`), otherwise create branch + worktree.
+create_worktree() {
+  local path="$1" branch="$2" base="${3:-}"
+  if git show-ref --verify -q "refs/heads/$branch"; then
+    [ -z "$base" ] || log "branch '$branch' already exists — reattaching to it (--base ignored)"
+    git worktree add "$path" "$branch" >&2
+  elif [ -n "$base" ]; then
+    git worktree add -b "$branch" "$path" "$base" >&2
+  else
+    git worktree add -b "$branch" "$path" >&2
+  fi
+}
+
 cmd_new() {
   require_repo
   local slug="" base="" up=0 deps=0 nobootstrap=0
@@ -81,15 +95,17 @@ cmd_new() {
 
   acquire_lock
   if reg_has "$slug"; then
-    log "'$slug' already exists — re-bootstrapping (idempotent)"
     off="$(reg_get "$slug" 2)"
+    if [ -d "$wt_path" ]; then
+      log "'$slug' already exists — re-bootstrapping (idempotent)"
+    else
+      log "'$slug' has a stale registry entry (worktree dir missing) — recreating"
+      git worktree prune >&2 2>/dev/null || true
+      create_worktree "$wt_path" "$branch" "$base" || { release_lock; die "git worktree add failed${base:+ (base '$base')}"; }
+    fi
   else
     off="$(free_offset)"
-    if [ -n "$base" ]; then
-      git worktree add -b "$branch" "$wt_path" "$base" >&2 || { release_lock; die "git worktree add failed (base '$base')"; }
-    else
-      git worktree add -b "$branch" "$wt_path" >&2 || { release_lock; die "git worktree add failed"; }
-    fi
+    create_worktree "$wt_path" "$branch" "$base" || { release_lock; die "git worktree add failed${base:+ (base '$base')}"; }
     printf '%s\t%s\t%s\t%s\t%s\n' "$slug" "$off" "$branch" "$wt_path" "$(date +%s)" >>"$REGISTRY"
   fi
   release_lock

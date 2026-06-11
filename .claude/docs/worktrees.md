@@ -14,7 +14,8 @@ cd ../.worktrees/<repo>/auth     # work here; commit on agent/auth
 .claude/bin/wt rm auth           # tear down services, remove worktree + branch
 ```
 
-Tip: add an alias so it's available everywhere —
+Tip: `install.sh` adds a `wt` alias to your shell rc automatically. To wire it
+manually:
 ```bash
 alias wt="$HOME/path/to/repo/.claude/bin/wt"   # or wherever the kit lives
 ```

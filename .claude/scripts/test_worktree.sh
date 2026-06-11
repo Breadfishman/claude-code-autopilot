@@ -97,6 +97,24 @@ rm -rf "$WT_ROOT/delta"            # simulate a manually-deleted worktree
 "$WT" prune >/dev/null 2>&1
 assert "prune drops stale delta entry"        '[ -z "$(regoff delta)" ]'
 
+echo "== stale registry entry is recovered by new =="
+"$WT" new stale1 >/dev/null 2>&1
+SOFF="$(regoff stale1)"
+rm -rf "$WT_ROOT/stale1"           # manually-deleted worktree, registry row remains
+"$WT" new stale1 >/dev/null 2>&1
+assert "stale slug is recreated"              '[ -d "$WT_ROOT/stale1" ]'
+assert "stale recreate keeps its offset"      '[ "$(regoff stale1)" = "$SOFF" ]'
+"$WT" rm stale1 --force >/dev/null 2>&1
+
+echo "== re-create after rm --keep-branch reattaches the branch =="
+"$WT" new keepy >/dev/null 2>&1
+echo "kept-commit" >>"$WT_ROOT/keepy/README.md"
+git -C "$WT_ROOT/keepy" commit -aqm kept
+"$WT" rm keepy --keep-branch --force >/dev/null 2>&1
+"$WT" new keepy >/dev/null 2>&1
+assert "reattached branch keeps its commit"   'grep -q "kept-commit" "$WT_ROOT/keepy/README.md"'
+"$WT" rm keepy --force >/dev/null 2>&1
+
 echo "== concurrency: parallel creates get distinct offsets =="
 "$WT" new c1 >/dev/null 2>&1 &
 "$WT" new c2 >/dev/null 2>&1 &
